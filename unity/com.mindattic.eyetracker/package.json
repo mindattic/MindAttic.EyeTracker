@@ -1,0 +1,14 @@
+{
+  "name": "com.mindattic.eyetracker",
+  "version": "0.1.0",
+  "displayName": "MindAttic EyeTracker",
+  "description": "Gaze client for the MindAttic.EyeTracker bridge. A browser tracker page owns the webcam; this package receives its gaze over WebSocket, exposes it to Unity, and runs the calibration.",
+  "unity": "6000.0",
+  "author": {
+    "name": "MindAttic"
+  },
+  "dependencies": {
+    "com.unity.modules.imgui": "1.0.0",
+    "com.unity.modules.jsonserialize": "1.0.0"
+  }
+}
