@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>EyeTracker: camera</title>
+<style>
+  :root { color-scheme: dark; --ink:#e8eefc; --dim:#8b96ad; --line:#1f2836; --bg:#07090f; --ok:#5fe3a1; --warn:#ffc266; --bad:#ff7a7a; --accent:#7fd4ff; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 500 16px/1.45 system-ui, "Segoe UI", sans-serif; }
+  main { max-width: 560px; margin: 0 auto; padding: 20px 16px 32px; display: grid; gap: 16px; }
+  h1 { font-size: 15px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin: 4px 0 0; font-weight: 600; }
+  .stage { position: relative; aspect-ratio: 4 / 3; background: #000; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+  .hint { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; color: var(--dim); }
+  button { font: inherit; font-weight: 650; color: #04121c; background: var(--accent); border: 0; border-radius: 10px; padding: 14px 18px; width: 100%; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  button.quiet { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; font-variant-numeric: tabular-nums; }
+  dt { color: var(--dim); } dd { margin: 0; text-align: right; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  p.note { color: var(--dim); font-size: 14px; margin: 0; }
+  select { font: inherit; width: 100%; padding: 10px; background: #0d121c; color: var(--ink); border: 1px solid var(--line); border-radius: 10px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>EyeTracker camera</h1>
+  <div class="stage">
+    <video id="video" playsinline muted></video>
+    <canvas id="overlay"></canvas>
+    <div class="hint" id="hint">This device's camera watches your eyes. Place it at the screen you will be looking at, facing you.</div>
+  </div>
+  <button id="start">Start camera</button>
+  <select id="cameras" hidden aria-label="Camera"></select>
+  <dl>
+    <dt>Camera</dt><dd id="s-camera">off</dd>
+    <dt>Face</dt><dd id="s-face">-</dd>
+    <dt>Bridge</dt><dd id="s-bridge">-</dd>
+    <dt>Listening</dt><dd id="s-displays">-</dd>
+    <dt>Calibration</dt><dd id="s-calib">-</dd>
+  </dl>
+  <p class="note">Calibration is started from the game or app that is showing the screen. Keep this page open while you play; if it is on the same computer as the game, leave this window visible beside it.</p>
+</main>
+<script type="module">
+import { EyeTracker, CameraLandmarkSource, publishToBridge, LM } from '/dist/eyetracker.browser.js';
+
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const room = params.get('room') || 'default';
+const config = await fetch('/config.json').then((r) => r.json()).catch(() => ({}));
+const video = $('video');
+const overlay = $('overlay');
+const ctx = overlay.getContext('2d');
+let tracker = null;
+let publisher = null;
+
+function set(id, text, cls) {
+  const el = $(id);
+  el.textContent = text;
+  el.className = cls || '';
+}
+
+async function start(deviceId) {
+  $('start').disabled = true;
+  publisher?.close();
+  tracker?.stop();
+  tracker = new EyeTracker({
+    // The display, not this page, decides what the calibration means, so it is kept per room.
+    storageKey: 'bridge.' + room,
+    camera: { video, deviceId, wasmBaseUrl: config.wasmBaseUrl, modelUrl: config.modelUrl },
+  });
+  tracker.on('status', render);
+  tracker.on('frame', draw);
+  set('s-camera', 'starting...', 'warn');
+  try {
+    await tracker.start();
+  } catch {
+    render(tracker.status);
+    $('start').disabled = false;
+    return;
+  }
+  $('hint').hidden = true;
+  $('start').textContent = 'Restart camera';
+  $('start').disabled = false;
+  const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+  publisher = publishToBridge(tracker, `${scheme}://${location.host}/gaze`, { room, name: navigator.platform || 'tracker' });
+  publisher.onChange(() => render(tracker.status));
+  listCameras(deviceId);
+  navigator.wakeLock?.request('screen').catch(() => {});
+}
+
+async function listCameras(current) {
+  const cameras = await CameraLandmarkSource.listCameras();
+  const select = $('cameras');
+  select.hidden = cameras.length < 2;
+  select.replaceChildren(...cameras.map((c, i) => {
+    const o = document.createElement('option');
+    o.value = c.deviceId;
+    o.textContent = c.label || `Camera ${i + 1}`;
+    o.selected = c.deviceId === current;
+    return o;
+  }));
+}
+
+function render(s) {
+  if (s.state === 'error') set('s-camera', s.error || 'error', 'bad');
+  else if (s.state === 'running') set('s-camera', `${s.fps} frames/s`, s.fps >= 20 ? 'ok' : 'warn');
+  else set('s-camera', s.state, 'warn');
+  set('s-face', s.state !== 'running' ? '-' : s.face ? 'found' : 'not found', s.face ? 'ok' : 'warn');
+  set('s-calib', s.calibrated ? 'calibrated' : 'not yet', s.calibrated ? 'ok' : 'warn');
+  if (publisher) {
+    set('s-bridge', publisher.connected ? `connected, room "${room}"` : 'connecting...', publisher.connected ? 'ok' : 'warn');
+    set('s-displays', publisher.displays === 1 ? '1 game' : `${publisher.displays} games`, publisher.displays ? 'ok' : 'warn');
+  }
+}
+
+function draw({ frame }) {
+  if (overlay.width !== video.videoWidth) { overlay.width = video.videoWidth; overlay.height = video.videoHeight; }
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+  if (!frame) return;
+  const lm = frame.landmarks;
+  const at = (i) => [lm[i].x * overlay.width, lm[i].y * overlay.height];
+  ctx.lineWidth = Math.max(2, overlay.width / 400);
+  for (const [iris, a, b] of [[LM.rightIris, LM.rightOuter, LM.rightInner], [LM.leftIris, LM.leftInner, LM.leftOuter]]) {
+    const [cx, cy] = at(iris[0]);
+    const [ex] = at(iris[1]);
+    ctx.strokeStyle = '#7fd4ff';
+    ctx.beginPath(); ctx.arc(cx, cy, Math.abs(ex - cx), 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = '#ffc266';
+    for (const i of [a, b]) { const [x, y] = at(i); ctx.beginPath(); ctx.arc(x, y, ctx.lineWidth * 1.4, 0, Math.PI * 2); ctx.fill(); }
+  }
+}
+
+$('start').addEventListener('click', () => start($('cameras').value || undefined));
+$('cameras').addEventListener('change', () => start($('cameras').value));
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && tracker?.status.state === 'running') navigator.wakeLock?.request('screen').catch(() => {});
+});
+if (params.has('autostart')) start();
+</script>
+</body>
+</html>

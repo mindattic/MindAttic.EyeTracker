@@ -1,0 +1,10 @@
+node_modules/
+dist/
+models/
+bridge/.cert/
+*.log
+.DS_Store
+Thumbs.db
+# Unreal plugin build output
+unreal/**/Binaries/
+unreal/**/Intermediate/
