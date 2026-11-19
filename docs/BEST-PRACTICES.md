@@ -1,0 +1,77 @@
+# Best practices
+
+## Setting up the camera
+
+- **Put the camera at the screen.** Directly above or below the screen's centre, facing the user.
+  A laptop's built-in webcam is already in the right place. A phone should be propped against the
+  bottom edge of the monitor, or on a stand at its top, not off to one side.
+- **Light the face from the front.** A window or lamp behind the user turns the face into a
+  silhouette and the irises disappear. A lamp behind the screen is ideal.
+- **Sit at arm's length**, with the face filling a good part of the frame. The tracker's
+  confidence drops when the face is small in the image.
+- **Glasses** usually work. Strong reflections on the lenses (from the screen itself, in a dark
+  room) hide the iris; raise the room light or lower the screen brightness.
+- **Use the highest camera resolution that still gives 30 frames a second.** The iris is only a
+  few dozen pixels wide. The library asks for 1280x720 by default.
+
+## Calibrating
+
+- Calibrate **in the posture you will use**. Leaning back afterwards changes everything.
+- Keep the head still and **move only the eyes**. The dots are placed so each one is a clear jump
+  from the last.
+- Look at the dot's **centre** until it finishes filling. The first 700 ms at each dot are not
+  recorded, to give the eyes time to arrive.
+- Calibrate **fullscreen**, or at least do not move or resize the window afterwards. The gaze
+  point is relative to the area the dots covered.
+- Check the reported error. Under 5% of the screen is good. Over 10% usually means poor light, a
+  moving head or a camera far off to one side; fix that and calibrate again.
+- **Recalibrate when things change**: a different seat, a moved camera, a different person.
+  Calibration takes fifteen seconds; offer it freely (a key, a button) instead of hiding it.
+
+## Designing for webcam accuracy
+
+Webcam gaze is good to a few percent of the screen, and it wanders. Design around that.
+
+- **Make targets big.** Anything the user selects or steers by looking should be at least a tenth
+  of the screen across, with space between targets.
+- **Use gaze as an area, not a pointer.** Effects that fall off smoothly with distance from the
+  gaze point (a field, a spotlight, a region highlight) forgive error. A crosshair that must hit
+  a small thing does not.
+- **Prefer direction to position.** MindPuck pushes the puck away from the gaze point. A gaze
+  point three units behind the puck that is half a unit off still pushes in almost the right
+  direction.
+- **Never trigger on a glance.** Eyes dart everywhere without their owner deciding to. Require the
+  gaze to stay (a dwell of half a second or more), or combine gaze with a key or a click.
+- **Show the user where the system thinks they are looking**, at least while they learn. People
+  adapt quickly to a small constant offset when they can see it.
+- **Respect `confidence`.** At zero (a blink, a turned head, no face) hold the last state or do
+  nothing. Do not act on the repeated point.
+- **Give the eyes a rest.** Controlling something with your eyes is tiring in a way a mouse is
+  not. Keep rounds short and make pausing easy.
+- **Always offer another way in.** A pointer fallback (`MouseGazeSource`) costs nothing and makes
+  the thing usable by people without a camera, in bad light, or who cannot be tracked reliably.
+
+## Privacy
+
+- Camera frames are processed on the device that owns the camera and are never stored or sent.
+  Say so to your users.
+- Ask for the camera at the moment the user chooses eye tracking, not on page load. The library's
+  `start()` is what triggers the browser's permission prompt.
+- Only gaze points cross the bridge, and the bridge only listens on the local network. Do not put
+  it on the internet.
+- A gaze trace is personal data: it shows what someone looked at. If you record it, treat it that
+  way.
+
+## Integrating
+
+- **Depend on `GazeSource`**, not on `EyeTracker`. Then the same code takes a webcam, a phone
+  through the bridge, or the pointer.
+- **Pause your game or app during calibration.** The user is looking at dots, not at your content.
+- **One calibration per arrangement.** `EyeTracker` stores its model under a `storageKey`; use a
+  different key for each screen-and-camera setup you support.
+- **Handle failure in words.** `start()` rejects with a browser error; `tracker.status.error`
+  holds a sentence fit to show (permission refused, no camera, camera busy).
+- **On a single computer with a native game**, keep the tracker page's window visible, not
+  minimized. Browsers and the operating system slow down pages they consider out of sight.
+- **Serve over https** anywhere but `localhost`. Browsers do not give the camera to insecure
+  pages. The bridge provides a self-signed https port for phones for this reason.

@@ -9,7 +9,7 @@
 // with a self-signed certificate is served for phones on the same network, because a browser
 // only allows the camera on a secure page.
 //
-//   node bridge/server.mjs [--port 8787] [--tls-port 8788] [--no-tls] [--open]
+//   node bridge/server.mjs [--port 8787] [--tls-port 8788] [--no-tls] [--open] [--open-path /play/]
 //                          [--mount /play=path/to/folder]   serve another folder (a game build)
 
 import http from 'node:http';
@@ -39,7 +39,7 @@ const port = Number(value('--port', process.env.EYETRACKER_PORT ?? 8787));
 const tlsPort = Number(value('--tls-port', process.env.EYETRACKER_TLS_PORT ?? 8788));
 const useTls = !flag('--no-tls');
 if (flag('--help') || flag('-h')) {
-  console.log('eyetracker-bridge [--port 8787] [--tls-port 8788] [--no-tls] [--open] [--mount /url=folder]');
+  console.log('eyetracker-bridge [--port 8787] [--tls-port 8788] [--no-tls] [--open] [--open-path /path/] [--mount /url=folder]');
   process.exit(0);
 }
 
@@ -328,8 +328,9 @@ console.log('');
 
 fetchModel();
 
-if (flag('--open')) {
-  const target = `http://localhost:${port}/demo/`;
+const openPath = value('--open-path', null);
+if (flag('--open') || openPath) {
+  const target = `http://localhost:${port}${openPath ?? '/demo/'}`;
   const command = process.platform === 'win32' ? 'cmd' : process.platform === 'darwin' ? 'open' : 'xdg-open';
   const commandArgs = process.platform === 'win32' ? ['/c', 'start', '', target] : [target];
   spawn(command, commandArgs, { stdio: 'ignore', detached: true }).unref();
