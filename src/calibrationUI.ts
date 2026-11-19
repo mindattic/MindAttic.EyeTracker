@@ -26,6 +26,9 @@ export const DEFAULT_CALIBRATION_UI: CalibrationUIOptions = {
   intro: 'Look at each dot until it fills. Keep your head still and move only your eyes.',
 };
 
+/** A cross error above this (in display units) means the gaze point will be of little use. */
+export const POOR_CALIBRATION = 0.15;
+
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
@@ -104,7 +107,8 @@ export async function runCalibration(
     if (cancelled) return cancelResult;
     overlay.style.cursor = 'none';
     if (o.fullscreen && !document.fullscreenElement) {
-      await document.documentElement.requestFullscreen().catch(() => {});
+      // Some browsers never answer a fullscreen request they will not grant; do not wait on them.
+      await Promise.race([document.documentElement.requestFullscreen().catch(() => {}), wait(1500)]);
       await wait(300);
     }
 
@@ -129,10 +133,14 @@ export async function runCalibration(
     message.style.display = 'block';
     message.textContent = 'Working it out...';
     const result = await source.calibFinish();
-    message.textContent = result.ok
-      ? `Calibrated. Typical error: about ${Math.round(result.crossError * 100)}% of the screen.`
-      : `Calibration failed: ${result.reason ?? 'unknown reason'}.`;
-    await wait(result.ok ? 1100 : 2200);
+    const percent = Math.round(result.crossError * 100);
+    const poor = result.ok && result.crossError > POOR_CALIBRATION;
+    message.textContent = !result.ok
+      ? `Calibration failed: ${result.reason ?? 'unknown reason'}.`
+      : poor
+        ? `Calibrated, but poorly: about ${percent}% of the screen off. Face the light, keep your head still and try again.`
+        : `Calibrated. Typical error: about ${percent}% of the screen.`;
+    await wait(result.ok && !poor ? 1100 : 2600);
     return result;
   } finally {
     await cleanup();
