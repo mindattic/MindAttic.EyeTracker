@@ -11,6 +11,13 @@ export interface CalibrationUIOptions {
   /** Time spent sampling each target. */
   collectMs: number;
   /**
+   * After the dots, have the user follow a slowly moving dot with their eyes for `pursuitMs`. It
+   * samples the whole area densely instead of at nine places, which is the biggest single gain in
+   * accuracy. On by default.
+   */
+  pursuit: boolean;
+  pursuitMs: number;
+  /**
    * After the dots, ask the user to keep looking at a dot while moving their head. This is what
    * teaches the tracker where the camera is and how to allow for head movement. On by default.
    */
@@ -29,6 +36,8 @@ export const DEFAULT_CALIBRATION_UI: CalibrationUIOptions = {
   collectMs: 900,
   fullscreen: false,
   headMovement: true,
+  pursuit: true,
+  pursuitMs: 24000,
   intro: 'Look at each dot until it fills. Keep your head still and move only your eyes.',
 };
 
@@ -134,6 +143,46 @@ export async function runCalibration(
       await source.calibCollect(target.x, target.y, o.collectMs);
     }
     if (cancelled) return cancelResult;
+
+    if (o.pursuit) {
+      // Follow the dot: a slow figure that sweeps the whole area, out and back in every direction,
+      // so any lag of the eyes behind the dot cancels instead of biasing the fit.
+      const prompt = document.createElement('div');
+      prompt.style.cssText =
+        'position:absolute;left:50%;bottom:9%;transform:translateX(-50%);max-width:36em;text-align:center;padding:0 24px';
+      prompt.textContent = 'Now follow the dot with your eyes as it moves. Keep your head still.';
+      overlay.appendChild(prompt);
+      const path = (ms: number) => ({
+        x: 0.5 + 0.43 * Math.sin((2 * Math.PI * ms) / 8000),
+        y: 0.5 + 0.41 * Math.sin((2 * Math.PI * ms) / 6000 + Math.PI / 2),
+      });
+      const place = (p: Point) => {
+        dot.style.left = `${p.x * 100}%`;
+        dot.style.top = `${p.y * 100}%`;
+      };
+      fill.style.transition = 'none';
+      fill.style.transform = 'scale(2.4)';
+      place(path(0));
+      await wait(1300);
+      dot.style.transition = 'none';
+      const began = performance.now();
+      let running = true;
+      const animate = () => {
+        if (!running) return;
+        place(path(performance.now() - began));
+        requestAnimationFrame(animate);
+      };
+      requestAnimationFrame(animate);
+      const slice = 200;
+      while (performance.now() - began < o.pursuitMs && !cancelled) {
+        const middle = path(performance.now() - began + slice / 2);
+        await source.calibCollect(middle.x, middle.y, slice, true);
+      }
+      running = false;
+      dot.style.transition = 'left .32s cubic-bezier(.3,.7,.2,1),top .32s cubic-bezier(.3,.7,.2,1)';
+      prompt.remove();
+      if (cancelled) return cancelResult;
+    }
 
     if (o.headMovement) {
       // Eyes fixed, head moving: the only way to learn how head movement shifts the picture, and

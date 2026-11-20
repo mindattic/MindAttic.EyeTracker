@@ -1,6 +1,6 @@
-import { FEATURE_COUNT, FEATURE_PENALTY, FEATURE_VERSION } from './features.js';
-import { addSample, emptyStats } from './learning.js';
-import { median, ridgeFit } from './math/ridge.js';
+import { FEATURE_COUNT, FEATURE_VERSION } from './features.js';
+import { addSample, emptyStats, solveStats, type FitStats } from './learning.js';
+import { median } from './math/ridge.js';
 import { predict, type GazeModel } from './model.js';
 import type { CalibrationResult, Point } from './types.js';
 
@@ -14,6 +14,14 @@ interface Target {
 
 /** A target needs at least this many samples to count. */
 export const MIN_SAMPLES_PER_TARGET = 5;
+/** A moving target (head movement, or a short stretch of following a moving dot) needs only this many. */
+export const MIN_SAMPLES_MOVING = 3;
+/**
+ * Samples taken while something was moving count for this much of a still sample. There are many
+ * more of them and each is less certain (the eyes lag a moving dot, and wander during head
+ * movement), so they inform the fit without outvoting the still dots.
+ */
+export const MOVING_WEIGHT = 0.35;
 /** A fit needs at least this many usable targets. */
 export const MIN_TARGETS = 4;
 
@@ -57,64 +65,56 @@ export class CalibrationSession {
     this.endTarget();
     const usable = this.targets
       .map((t) => ({ ...t, rows: t.headMoving ? t.rows : trimOutliers(t.rows) }))
-      .filter((t) => t.rows.length >= MIN_SAMPLES_PER_TARGET);
+      .filter((t) => t.rows.length >= (t.headMoving ? MIN_SAMPLES_MOVING : MIN_SAMPLES_PER_TARGET));
+    const still = usable.filter((t) => !t.headMoving);
     const samples = usable.reduce((n, t) => n + t.rows.length, 0);
     const fail = (reason: string) => ({
       model: null,
       result: { ok: false, reason, targets: usable.length, samples, fitError: 0, crossError: 0 },
     });
-    if (usable.length < MIN_TARGETS) {
-      return fail(`only ${usable.length} of ${this.targets.length} targets had a visible face and open eyes`);
+    if (still.length < MIN_TARGETS) {
+      return fail(`only ${still.length} of the dots had a visible face and open eyes`);
     }
 
-    const weights = fitTargets(usable);
+    const stats = statsOf(usable);
+    const weights = modelOf(stats);
     let sq = 0;
-    for (const t of usable) {
+    let count = 0;
+    for (const t of still) {
       for (const row of t.rows) {
         const p = predict(weights, row);
         sq += (p.x - t.x) ** 2 + (p.y - t.y) ** 2;
+        count++;
       }
     }
-    const fitError = Math.sqrt(sq / samples);
+    const fitError = Math.sqrt(sq / count);
 
+    // Leave each still dot out in turn and predict it from everything else.
     let crossSq = 0;
-    for (let i = 0; i < usable.length; i++) {
-      const held = usable[i];
-      const rest = usable.filter((_, j) => j !== i);
-      const p = predict(fitTargets(rest), meanRow(held.rows));
+    for (const held of still) {
+      const p = predict(modelOf(statsOf(usable.filter((t) => t !== held))), meanRow(held.rows));
       crossSq += (p.x - held.x) ** 2 + (p.y - held.y) ** 2;
     }
-    const crossError = Math.sqrt(crossSq / usable.length);
+    const crossError = Math.sqrt(crossSq / still.length);
     if (!Number.isFinite(fitError) || !Number.isFinite(crossError)) return fail('the fit did not converge');
 
-    // Keep the sums the fit was solved from, so learning can carry on from here.
-    const stats = emptyStats();
-    for (const t of usable) for (const row of t.rows) addSample(stats, row, t.x, t.y);
+    // The sums are kept with the model, so learning can carry on from here.
     const model: GazeModel = { ...weights, createdAt: Date.now(), crossError, stats, learned: 0 };
     return { model, result: { ok: true, targets: usable.length, samples, fitError, crossError } };
   }
 }
 
-function fitTargets(targets: Target[]): GazeModel {
-  const rows: number[][] = [];
-  const xs: number[] = [];
-  const ys: number[] = [];
+function statsOf(targets: Target[]): FitStats {
+  const stats = emptyStats();
   for (const t of targets) {
-    for (const row of t.rows) {
-      rows.push(row);
-      xs.push(t.x);
-      ys.push(t.y);
-    }
+    const weight = t.headMoving ? MOVING_WEIGHT : 1;
+    for (const row of t.rows) addSample(stats, row, t.x, t.y, weight);
   }
-  const penalty = [...FEATURE_PENALTY];
-  return {
-    version: FEATURE_VERSION,
-    features: FEATURE_COUNT,
-    wx: ridgeFit(rows, xs, penalty),
-    wy: ridgeFit(rows, ys, penalty),
-    createdAt: 0,
-    crossError: 0,
-  };
+  return stats;
+}
+
+function modelOf(stats: FitStats): GazeModel {
+  return { version: FEATURE_VERSION, features: FEATURE_COUNT, ...solveStats(stats), createdAt: 0, crossError: 0 };
 }
 
 function meanRow(rows: number[][]): number[] {

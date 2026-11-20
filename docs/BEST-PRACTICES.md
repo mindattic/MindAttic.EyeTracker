@@ -21,6 +21,8 @@
 - Calibrate **in the posture you will use**. Leaning back afterwards changes everything.
 - For the nine dots, keep the head still and **move only the eyes**. The dots are placed so each
   one is a clear jump from the last.
+- When the dot starts to glide, **follow it with your eyes** and keep your head still. Stay on it
+  the whole way; this part does the most for accuracy.
 - For the three amber dots that follow, do the opposite: **keep your eyes on the dot and move
   your head**. Turn it left and right, nod, lean in and back, shift side to side, slowly, about as
   far as you would while playing. This is what lets the tracker allow for head movement later;
@@ -35,6 +37,17 @@
   moving head or a camera far off to one side; fix that and calibrate again.
 - **Recalibrate when things change**: a different seat, a moved camera, a different person.
   Calibration takes fifteen seconds; offer it freely (a key, a button) instead of hiding it.
+
+## What accuracy to expect
+
+A webcam sees each iris as a few dozen pixels, and a one-pixel error in placing its centre moves
+the gaze point by roughly a degree. With good light and a careful calibration, expect the gaze
+point to land within one to three degrees of where you are looking: at arm's length that is a
+circle two to six centimetres across on the screen, 50 to 200 pixels on a typical monitor. It will
+not be pixel-accurate; purpose-built infrared eye trackers, with their own illumination and far
+more pixels on the eye, reach about half a degree. Use the gaze lab's accuracy check to see what
+your own setup gives, and its report to see whether the error is a steady offset (fixable by
+calibrating again or by learning) or scatter (helped by more light and a higher camera resolution).
 
 ## Designing for webcam accuracy
 

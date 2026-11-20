@@ -110,11 +110,16 @@ constants. Learning in use (below) keeps refining those constants.
 
 ### Calibration
 
-Calibration has two parts.
+Calibration has three parts, about a minute in all.
 
-1. **Dots.** The user looks at nine known points with the head still. This pins down the eye
-   terms.
-2. **Head movement.** The user keeps looking at one dot while turning, nodding and leaning (three
+1. **Dots.** The user looks at nine known points with the head still. This anchors the fit.
+2. **Follow the dot.** A dot glides round the whole area for 24 seconds and the user follows it
+   with their eyes. Nine dots sample nine places; this samples everywhere, which matters because
+   the model has 21 terms and nine places leave it free to bend between them. The path goes out
+   and back in every direction, so the eyes' small lag behind the dot cancels out instead of
+   pulling the fit one way. In simulation it cuts the error on unseen points to between a quarter
+   and a half of what the dots alone give.
+3. **Head movement.** The user keeps looking at one dot while turning, nodding and leaning (three
    dots, about fifteen seconds). The gaze point does not change but every feature does. This is
    what pins down the head terms: without it the fit has never seen the head move and can only
    guess how to allow for it.
@@ -122,13 +127,14 @@ Calibration has two parts.
 `CalibrationSession.fit` then:
 
 1. For the dots, drops the fifth of each target's samples farthest from that target's median: the
-   frames where the eye was still arriving or a blink had begun. Head-movement samples are all
-   kept, since they differ on purpose.
+   frames where the eye was still arriving or a blink had begun. Samples from the moving parts are
+   all kept, since they differ on purpose, but each counts for 0.35 of a still sample: there are
+   many more of them and each is less certain, and they must not outvote the dots.
 2. Fits two ridge regressions, one for x and one for y. The penalty is per feature: nearly nothing
    on the eye terms, a little more on the head terms, so that if the head-movement part was skipped
    they stay small instead of fitting noise.
-3. Measures two errors. `fitError` is the error on the samples it trained on. `crossError` is
-   leave-one-target-out: fit without one target, predict it, for each in turn. It is the more
+3. Measures two errors on the still dots. `fitError` is the error on the samples it trained on.
+   `crossError` is leave-one-dot-out: fit without one dot, predict it, for each in turn. It is the more
    honest number and the one shown to the user. It is pessimistic for corner targets, which the
    other targets do not surround.
 
@@ -272,4 +278,7 @@ The tests calibrate against it and check the predictions, which exercises featur
 the model and the pipeline end to end. The same generator is exported for consumers' own tests.
 
 The gaze lab (`demo/`) is the test with a real camera: its accuracy check shows targets the
-calibration never saw and reports the error in pixels.
+calibration never saw and reports the error in pixels. **Copy report** puts everything measured in
+the session on the clipboard as JSON: the calibration result, and for every check target the
+signed error in x and y and the jitter. A constant offset, a wrong scale and plain noise look
+different in those numbers, which is what makes tuning possible.

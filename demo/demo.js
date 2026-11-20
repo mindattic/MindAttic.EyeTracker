@@ -95,6 +95,35 @@ function frame() {
 }
 requestAnimationFrame(frame);
 
+// ---------- report ----------
+// Everything measured in this session, so accuracy can be tuned from numbers instead of impressions.
+const report = { when: new Date().toISOString(), calibration: null, checks: [], live: null };
+function saveReport() {
+  $('report-copy').disabled = false;
+}
+$('report-copy').addEventListener('click', async () => {
+  const text = JSON.stringify(
+    {
+      ...report,
+      viewport: [innerWidth, innerHeight],
+      screen: [screen.width, screen.height],
+      window: [screenX, screenY, outerWidth, outerHeight],
+      pixelRatio: devicePixelRatio,
+      camera: $('video').videoWidth ? [$('video').videoWidth, $('video').videoHeight] : null,
+      userAgent: navigator.userAgent,
+    },
+    null,
+    1,
+  );
+  try {
+    await navigator.clipboard.writeText(text);
+    $('report').textContent = 'Report copied. Paste it wherever you are reporting from.';
+  } catch {
+    console.log(text);
+    $('report').textContent = 'Could not reach the clipboard; the report is in the browser console.';
+  }
+});
+
 // ---------- sources ----------
 let source = null;
 let stopSource = () => {};
@@ -141,6 +170,13 @@ $('camera').addEventListener('click', async () => {
     set('s-dist', `${features.dist.toFixed(0)} cm`);
     set('s-plane', `${deg(features.planeYaw)} turn, ${deg(features.planePitch)} tilt`);
     set('s-learned', `${tracker.learned} samples`);
+    report.live = {
+      fps: tracker.status.fps,
+      distanceCm: Math.round(features.dist),
+      planeYawDeg: Math.round((features.planeYaw * 180) / Math.PI),
+      planePitchDeg: Math.round((features.planePitch * 180) / Math.PI),
+      learned: tracker.learned,
+    };
   });
   $('report').textContent = 'Starting the camera and loading the face model...';
   try {
@@ -185,6 +221,8 @@ $('mouse').addEventListener('click', () => {
 
 $('calibrate').addEventListener('click', async () => {
   const result = await runCalibration(source, { points: 9 });
+  report.calibration = result;
+  saveReport();
   if (result.ok) {
     $('report').textContent = `Calibrated on ${result.targets} points. Expected error: about ${(result.crossError * 100).toFixed(1)}% of the screen. Run the accuracy check to measure it.`;
   } else if (result.reason !== 'cancelled') {
@@ -199,6 +237,7 @@ $('check').addEventListener('click', async () => {
   const points = [];
   for (let i = 0; i < 8; i++) points.push({ x: 0.12 + Math.random() * 0.76, y: 0.12 + Math.random() * 0.76 });
   const errors = [];
+  const detail = [];
   $('check').disabled = true;
   target.style.display = 'block';
   for (const p of points) {
@@ -215,6 +254,9 @@ $('check').addEventListener('click', async () => {
       const mx = seen.reduce((s, g) => s + g.x, 0) / seen.length;
       const my = seen.reduce((s, g) => s + g.y, 0) / seen.length;
       errors.push(Math.hypot((mx - p.x) * innerWidth, (my - p.y) * innerHeight));
+      // Signed error and spread per target: a constant offset, a scale error and plain noise look different here.
+      const sd = Math.sqrt(seen.reduce((s, g) => s + (g.x - mx) ** 2 + (g.y - my) ** 2, 0) / seen.length);
+      detail.push({ target: [+p.x.toFixed(3), +p.y.toFixed(3)], dxPx: Math.round((mx - p.x) * innerWidth), dyPx: Math.round((my - p.y) * innerHeight), jitterPx: Math.round(sd * Math.hypot(innerWidth, innerHeight)), samples: seen.length });
     }
   }
   target.style.display = 'none';
@@ -224,6 +266,8 @@ $('check').addEventListener('click', async () => {
     return;
   }
   const mean = errors.reduce((s, e) => s + e, 0) / errors.length;
+  report.checks.push({ meanPx: Math.round(mean), worstPx: Math.round(Math.max(...errors)), targets: detail });
+  saveReport();
   const worst = Math.max(...errors);
   const percent = (mean / Math.hypot(innerWidth, innerHeight)) * 100;
   $('report').textContent = `Accuracy over ${errors.length} points: ${Math.round(mean)} px average (${percent.toFixed(1)}% of the screen diagonal), ${Math.round(worst)} px worst.`;

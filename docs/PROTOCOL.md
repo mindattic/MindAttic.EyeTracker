@@ -98,6 +98,11 @@ what teach the tracker to allow for head movement and for where the camera is. A
 skips them still gets a working calibration, but one that drifts when the head moves. Trackers
 older than this field ignore it.
 
+A display can also run a **follow-the-dot** pass, which improves accuracy more than anything else:
+move a target slowly round the whole area (the reference path is x = 0.5 + 0.43 sin(2 pi t / 8 s),
+y = 0.5 + 0.41 sin(2 pi t / 6 s + pi / 2), for 24 seconds) and, every 200 ms, send `collect` for
+200 ms with `headMoving: true` and the position the target will have at the middle of that slice.
+
 `id` is any number the display chooses; the answer carries it back. Nine targets is the default
 pattern: the centre, the four corners and the four edge midpoints, each 8% in from the edge.
 
