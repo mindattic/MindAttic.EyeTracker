@@ -31,7 +31,7 @@ function calibrate(scene: Scene, options: { headMovement: boolean; noise?: numbe
   for (const p of calibrationPattern(9)) {
     session.beginTarget(p.x, p.y);
     for (let i = 0; i < 27; i++) {
-      session.add(vector(p.x, p.y, { ...scene, noise, random, headXCm: random() - 0.5, yaw: (random() - 0.5) * 0.03 }));
+      session.add(vector(p.x, p.y, { ...scene, noise, random, headXCm: (scene.headXCm ?? 0) + (random() - 0.5), yaw: (random() - 0.5) * 0.03 }));
     }
     session.endTarget();
   }
