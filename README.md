@@ -15,7 +15,7 @@ It works in three places:
 | **Unity** | The UPM package in `unity/com.mindattic.eyetracker`. The game receives gaze from a tracker page through the bridge. |
 | **Unreal** | The plugin in `unreal/MindAtticEyeTracker`. Same arrangement. |
 
-The first game built on it is [MindPuck](https://github.com/mindattic/MindPuck), with
+The first game built on it is [MindPuck](https://github.com/mindattic/MindPuck.Web), with
 [Unity](https://github.com/mindattic/MindPuck.Unity) and
 [Unreal](https://github.com/mindattic/MindPuck.Unreal) versions.
 
