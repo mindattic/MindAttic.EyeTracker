@@ -285,7 +285,8 @@ function listen(server, p, label) {
     server.once('error', (err) => {
       reject(new Error(err.code === 'EADDRINUSE' ? `port ${p} is already in use (is another bridge running?)` : err.message));
     });
-    server.listen(p, '0.0.0.0', () => {
+    // No host: Node then listens on IPv6 and IPv4 together, so "localhost" works whichever a client resolves it to.
+    server.listen(p, () => {
       log(`${label} on port ${p}`);
       resolve();
     });

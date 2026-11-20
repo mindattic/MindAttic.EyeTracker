@@ -123,4 +123,7 @@ with lambdas.
 - `ws://` to a bridge on the same machine or network. `wss://` goes through the engine's WebSockets
   module and its certificate checks; the bridge's self-signed certificate will be refused unless
   the engine is told to trust it.
+- A `localhost` URL is tried as `127.0.0.1` first, then as written, alternating on each failed
+  attempt. The engine's WebSocket client can resolve `localhost` to the IPv6 loopback, and the
+  bridge listens on IPv4 only.
 - Resizing the window after calibrating makes the calibration wrong. Calibrate again.

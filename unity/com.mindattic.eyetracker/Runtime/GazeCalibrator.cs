@@ -77,12 +77,15 @@ namespace MindAttic.EyeTracker
             };
         }
 
-        /// <summary>Show the intro and start. Does nothing if a calibration is already running.</summary>
-        public void Begin()
+        /// <summary>
+        /// Show the intro and start. Does nothing if a calibration is already running. With skipIntro
+        /// the first target appears at once, without waiting for a click or Space.
+        /// </summary>
+        public void Begin(bool skipIntro = false)
         {
             if (IsRunning) return;
             if (tracker == null) tracker = GetComponent<GazeTracker>();
-            StartCoroutine(Run());
+            StartCoroutine(Run(skipIntro));
         }
 
         /// <summary>Stop a running calibration. It ends with ok false and the reason "cancelled".</summary>
@@ -97,10 +100,10 @@ namespace MindAttic.EyeTracker
             phase = Phase.Idle;
         }
 
-        private IEnumerator Run()
+        private IEnumerator Run(bool skipIntro)
         {
             cancelled = false;
-            startRequested = false;
+            startRequested = skipIntro;
             message = intro;
             phase = Phase.Intro;
             while (!startRequested && !cancelled) yield return null;

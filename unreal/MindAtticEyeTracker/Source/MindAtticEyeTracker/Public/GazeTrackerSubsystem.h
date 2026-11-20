@@ -164,6 +164,15 @@ private:
 	int32 SocketGeneration = 0;
 
 	FString BridgeUrl;
+	/**
+	 * The address the current attempt uses. For a "localhost" URL this alternates between
+	 * 127.0.0.1 and the name itself: the engine's WebSocket client can resolve localhost to the
+	 * IPv6 loopback, where the bridge (which listens on IPv4) is not found.
+	 */
+	FString AttemptUrl;
+	bool bPreferLoopbackIp = true;
+	/** The last connection failure that was logged, so retries do not repeat it. */
+	FString LastConnectError;
 	FString BridgeRoom;
 	bool bWantConnection = false;
 	bool bConnected = false;

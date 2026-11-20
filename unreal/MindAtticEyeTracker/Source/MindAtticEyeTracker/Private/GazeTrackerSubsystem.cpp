@@ -39,6 +39,8 @@ void UGazeTrackerSubsystem::Connect(const FString& Url, const FString& Room)
 	BridgeUrl = Url.IsEmpty() ? FString(TEXT("ws://localhost:8787/gaze")) : Url;
 	BridgeRoom = Room.IsEmpty() ? FString(TEXT("default")) : Room;
 	bWantConnection = true;
+	bPreferLoopbackIp = true;
+	LastConnectError.Reset();
 	EnsureTicker();
 	OpenSocket();
 }
@@ -103,8 +105,10 @@ void UGazeTrackerSubsystem::OpenSocket()
 		FModuleManager::Get().LoadModule(TEXT("WebSockets"));
 	}
 
+	AttemptUrl = bPreferLoopbackIp ? BridgeUrl.Replace(TEXT("://localhost"), TEXT("://127.0.0.1")) : BridgeUrl;
+	UE_LOG(LogMindAtticEyeTracker, Verbose, TEXT("Opening a WebSocket to %s."), *AttemptUrl);
 	const int32 Generation = ++SocketGeneration;
-	TSharedRef<IWebSocket> NewSocket = FWebSocketsModule::Get().CreateWebSocket(BridgeUrl, FString());
+	TSharedRef<IWebSocket> NewSocket = FWebSocketsModule::Get().CreateWebSocket(AttemptUrl, FString());
 	Socket = NewSocket;
 
 	NewSocket->OnConnected().AddWeakLambda(this, [this, Generation]()
@@ -157,7 +161,7 @@ void UGazeTrackerSubsystem::DropSocket()
 void UGazeTrackerSubsystem::HandleOpened()
 {
 	bConnected = true;
-	UE_LOG(LogMindAtticEyeTracker, Log, TEXT("Connected to the bridge at %s (room %s)."), *BridgeUrl, *BridgeRoom);
+	UE_LOG(LogMindAtticEyeTracker, Log, TEXT("Connected to the bridge at %s (room %s)."), *AttemptUrl, *BridgeRoom);
 
 	const TSharedRef<FJsonObject> Hello = MakeShared<FJsonObject>();
 	Hello->SetStringField(TEXT("type"), TEXT("hello"));
@@ -176,6 +180,18 @@ void UGazeTrackerSubsystem::HandleClosed(const FString& Why)
 	if (bWasConnected)
 	{
 		UE_LOG(LogMindAtticEyeTracker, Log, TEXT("The bridge connection closed (%s)."), *Why);
+		LastConnectError.Reset();
+	}
+	else
+	{
+		// Try the other spelling of localhost next time.
+		bPreferLoopbackIp = !bPreferLoopbackIp;
+	}
+	if (!bWasConnected && Why != LastConnectError)
+	{
+		// Logged once per distinct reason, not on every retry.
+		LastConnectError = Why;
+		UE_LOG(LogMindAtticEyeTracker, Log, TEXT("Could not connect to the bridge at %s (%s). Retrying every %.1f s."), *BridgeUrl, *Why, ReconnectSeconds);
 	}
 	DropSocket();
 	bConnected = false;
