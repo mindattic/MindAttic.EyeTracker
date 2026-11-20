@@ -21,6 +21,10 @@ namespace MindAttic.EyeTracker
         public int collectMs = 900;
         [Tooltip("How far in from the edge the outer targets sit, as a fraction of the screen.")]
         public float margin = 0.08f;
+        [Tooltip("After the dots, ask the user to keep looking at a dot while moving their head. This teaches the tracker where the camera is and how to allow for head movement.")]
+        public bool headMovement = true;
+        [Tooltip("Time to let the eye land on a head-movement target before sampling starts.")]
+        public float headSettleSeconds = 1.2f;
         [TextArea]
         public string intro = "Look at each dot until it fills. Keep your head still and move only your eyes.";
 
@@ -37,6 +41,8 @@ namespace MindAttic.EyeTracker
         private bool cancelled;
         private Vector2 target;
         private float fill;
+        private bool headStep;
+        private string instruction = "";
         private string message = "";
         private Texture2D white;
         private Texture2D ring;
@@ -148,6 +154,37 @@ namespace MindAttic.EyeTracker
                 yield break;
             }
 
+            if (headMovement)
+            {
+                // Eyes fixed, head moving: the only way to learn how head movement shifts the picture.
+                headStep = true;
+                for (int i = 0; i < HeadSteps.Length && !cancelled; i++)
+                {
+                    HeadStep step = HeadSteps[i];
+                    target = new Vector2(step.x, step.y);
+                    instruction = step.text;
+                    fill = 0f;
+                    float settled = Time.unscaledTime + headSettleSeconds;
+                    while (Time.unscaledTime < settled && !cancelled) yield return null;
+                    if (cancelled) break;
+
+                    Task<int> collect = client.CollectAsync(step.x, step.y, step.ms, true);
+                    float began = Time.unscaledTime;
+                    while (!collect.IsCompleted && !cancelled)
+                    {
+                        fill = Mathf.Clamp01((Time.unscaledTime - began) / (step.ms / 1000f));
+                        yield return null;
+                    }
+                }
+                headStep = false;
+                instruction = "";
+                if (cancelled)
+                {
+                    Finish(GazeCalibrationResult.Failed("cancelled"));
+                    yield break;
+                }
+            }
+
             message = "Working it out...";
             phase = Phase.Message;
             Task<GazeCalibrationResult> finish = client.FinishAsync();
@@ -162,6 +199,22 @@ namespace MindAttic.EyeTracker
             Finish(result);
         }
 
+        private struct HeadStep
+        {
+            public float x;
+            public float y;
+            public int ms;
+            public string text;
+        }
+
+        /// <summary>The reference head-movement sequence from docs/PROTOCOL.md.</summary>
+        private static readonly HeadStep[] HeadSteps =
+        {
+            new HeadStep { x = 0.5f, y = 0.5f, ms = 6000, text = "Keep your eyes on the dot and slowly turn your head left and right, then nod up and down." },
+            new HeadStep { x = 0.18f, y = 0.22f, ms = 4000, text = "Eyes on the dot again. Lean a little closer, then back, then side to side." },
+            new HeadStep { x = 0.82f, y = 0.78f, ms = 4000, text = "Once more: eyes on the dot, move your head around gently." },
+        };
+
         private IEnumerator ShowMessage(string text, float seconds)
         {
             message = text;
@@ -173,6 +226,8 @@ namespace MindAttic.EyeTracker
         private void Finish(GazeCalibrationResult result)
         {
             phase = Phase.Idle;
+            headStep = false;
+            instruction = "";
             LastResult = result;
             HasResult = true;
             Action<GazeCalibrationResult> handler = Completed;
@@ -210,11 +265,22 @@ namespace MindAttic.EyeTracker
             {
                 float size = 44f * scale;
                 var centre = new Vector2(target.x * w, target.y * h);
-                GUI.color = new Color(0.5f, 0.83f, 1f, 1f);
+                // Blue for the look-at-the-dot targets, amber for the head-movement steps.
+                GUI.color = headStep ? new Color(1f, 0.75f, 0.3f, 1f) : new Color(0.5f, 0.83f, 1f, 1f);
                 GUI.DrawTexture(new Rect(centre.x - size / 2, centre.y - size / 2, size, size), ring);
                 float dot = 8f * scale * Mathf.Lerp(1f, 4.6f, fill);
-                GUI.color = Color.white;
+                GUI.color = headStep ? new Color(1f, 0.85f, 0.5f, 1f) : Color.white;
                 GUI.DrawTexture(new Rect(centre.x - dot / 2, centre.y - dot / 2, dot, dot), disc);
+                if (headStep && !string.IsNullOrEmpty(instruction))
+                {
+                    // The instruction sits away from the dot: below it for the upper targets, above for the lower.
+                    textStyle.fontSize = Mathf.RoundToInt(22f * scale);
+                    GUI.color = new Color(1f, 0.9f, 0.7f, 1f);
+                    float boxW = Mathf.Min(w - 48f, 760f * scale);
+                    float boxH = 110f * scale;
+                    float boxY = target.y > 0.6f ? h * 0.18f : h * 0.68f;
+                    GUI.Label(new Rect((w - boxW) / 2, boxY, boxW, boxH), instruction, textStyle);
+                }
             }
             else
             {

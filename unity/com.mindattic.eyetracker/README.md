@@ -47,9 +47,9 @@ public class LookAtIt : MonoBehaviour
 | Type | What it is |
 | --- | --- |
 | `GazeSample` | One `gaze` message: `t`, `x`, `y`, `rawX`, `rawY`, `confidence`, `face`, `blink`, `calibrated`. |
-| `GazeBridgeClient` | Plain C#, no MonoBehaviour. A `ClientWebSocket` on a background task. Says `hello` as a `display`, reconnects every 1.5 seconds, keeps the latest sample and the tracker count where any thread can read them, and runs the calibration requests (`BeginCalibration`, `CollectAsync`, `FinishAsync`, `ClearCalibration`). |
-| `GazeTracker` | MonoBehaviour. `url` (default `ws://localhost:8787/gaze`), `room`, `Latest`, `HasTracker`, `Connected`, `Confidence`, `Normalized`, `ScreenPoint`, and a `Sample` event raised on the main thread in `Update`. |
-| `GazeCalibrator` | MonoBehaviour. `Begin()` runs the nine-point calibration over the whole screen with IMGUI and reports a `GazeCalibrationResult` (`ok`, `crossError`, ...) through `Completed` and `LastResult`. Esc cancels. |
+| `GazeBridgeClient` | Plain C#, no MonoBehaviour. A `ClientWebSocket` on a background task. Says `hello` as a `display`, reconnects every 1.5 seconds, keeps the latest sample and the tracker count where any thread can read them, and runs the calibration requests (`BeginCalibration`, `CollectAsync` with an optional `headMoving`, `FinishAsync`, `ClearCalibration`, `Hint`). |
+| `GazeTracker` | MonoBehaviour. `url` (default `ws://localhost:8787/gaze`), `room`, `Latest`, `HasTracker`, `Connected`, `Confidence`, `Normalized`, `ScreenPoint`, a `Sample` event raised on the main thread in `Update`, and `Hint` / `HintScreenPoint`. |
+| `GazeCalibrator` | MonoBehaviour. `Begin()` runs the nine-point calibration and then the head-movement steps over the whole screen with IMGUI and reports a `GazeCalibrationResult` (`ok`, `crossError`, ...) through `Completed` and `LastResult`. Esc cancels. |
 
 ### Coordinates
 
@@ -72,6 +72,25 @@ The display draws the targets, because only it knows its own screen. The tracker
 samples, because only it has the camera. `GazeCalibrator` does the display's half: nine targets
 (the centre, the four corners and the four edge midpoints, each 8% in from the edge), 700 ms for
 the eye to land, then 900 ms of sampling on each.
+
+After the dots come three **head-movement steps**, drawn with an amber dot and an instruction on
+screen: keep your eyes on the dot and move your head. They are (0.5, 0.5) for 6000 ms, then
+(0.18, 0.22) and (0.82, 0.78) for 4000 ms each, with 1200 ms before each for the eye to arrive.
+Each is sent as a `collect` with `"headMoving": true`. These steps teach the tracker where the
+camera is and how to allow for head movement; without them the calibration drifts when the head
+moves. Set `headMovement` to false to skip them.
+
+### Hints
+
+After a calibration, tell the tracker whenever you know where the user is looking, for example a
+button they just clicked. The tracker adds the point to its fit and keeps improving.
+
+```csharp
+gaze.HintScreenPoint(Input.mousePosition);        // Unity pixels, y up
+gaze.Hint(new Vector2(0.4f, 0.6f), 0.5f);         // normalized, y down, with a weight
+```
+
+This sends `{ "type": "calib", "op": "hint", ... }`. There is no answer.
 
 The calibration is relative to the screen area the targets covered. Calibrate again after resizing
 or moving the window.

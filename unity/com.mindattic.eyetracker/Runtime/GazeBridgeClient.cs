@@ -146,12 +146,22 @@ namespace MindAttic.EyeTracker
         /// display point. Completes with the number of samples collected, or 0 when the tracker did not
         /// answer within ms plus three seconds.
         /// </summary>
-        public async Task<int> CollectAsync(double x, double y, int ms)
+        public Task<int> CollectAsync(double x, double y, int ms)
+        {
+            return CollectAsync(x, y, ms, false);
+        }
+
+        /// <summary>
+        /// The same, with headMoving true for a head-movement step: the user keeps looking at the target
+        /// while turning, nodding and leaning, which teaches the tracker to allow for head movement.
+        /// </summary>
+        public async Task<int> CollectAsync(double x, double y, int ms, bool headMoving)
         {
             int id = Interlocked.Increment(ref nextId);
             Task<CalibDto> answer = Request(id);
             string json = "{\"type\":\"calib\",\"op\":\"collect\",\"id\":" + id.ToString(CultureInfo.InvariantCulture) +
-                ",\"x\":" + Number(x) + ",\"y\":" + Number(y) + ",\"ms\":" + ms.ToString(CultureInfo.InvariantCulture) + "}";
+                ",\"x\":" + Number(x) + ",\"y\":" + Number(y) + ",\"ms\":" + ms.ToString(CultureInfo.InvariantCulture) +
+                (headMoving ? ",\"headMoving\":true" : "") + "}";
             if (!Send(json))
             {
                 Forget(id);
@@ -182,6 +192,18 @@ namespace MindAttic.EyeTracker
                 fitError = reply.fitError,
                 crossError = reply.crossError,
             };
+        }
+
+        /// <summary>
+        /// Tell the tracker the user is looking at this normalized display point right now (they just
+        /// clicked it, for example). It adds the point to its fit and keeps improving. Can be sent at any
+        /// time after a calibration. weight is optional (pass a negative value to leave it out). There
+        /// is no answer. Returns false when not connected.
+        /// </summary>
+        public bool Hint(double x, double y, double weight = -1)
+        {
+            return Send("{\"type\":\"calib\",\"op\":\"hint\",\"x\":" + Number(x) + ",\"y\":" + Number(y) +
+                (weight >= 0 ? ",\"weight\":" + Number(weight) : "") + "}");
         }
 
         /// <summary>Drop the calibration; the tracker goes back to its rough built-in mapping.</summary>

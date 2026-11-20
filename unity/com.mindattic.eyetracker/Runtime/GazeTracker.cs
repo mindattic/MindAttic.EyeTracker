@@ -80,6 +80,25 @@ namespace MindAttic.EyeTracker
             get { return new Vector2(normalized.x * Screen.width, (1f - normalized.y) * Screen.height); }
         }
 
+        /// <summary>
+        /// Tell the tracker the user is looking at this normalized display point (y down) right now, for
+        /// example a button they just clicked. The tracker folds it into its calibration. weight is
+        /// optional (negative leaves it out). Does nothing while the mouse is standing in.
+        /// </summary>
+        public bool Hint(Vector2 normalizedPoint, float weight = -1f)
+        {
+            if (client == null || !HasTracker) return false;
+            return client.Hint(normalizedPoint.x, normalizedPoint.y, weight);
+        }
+
+        /// <summary>The same, from a Unity screen point in pixels (y up), such as Input.mousePosition.</summary>
+        public bool HintScreenPoint(Vector2 screenPoint, float weight = -1f)
+        {
+            float w = Mathf.Max(1, Screen.width);
+            float h = Mathf.Max(1, Screen.height);
+            return Hint(new Vector2(screenPoint.x / w, 1f - screenPoint.y / h), weight);
+        }
+
         private void OnEnable()
         {
             try
