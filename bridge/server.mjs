@@ -167,6 +167,9 @@ function announce(room) {
 
 function attach(server) {
   const wss = new WebSocketServer({ server, path: '/gaze', maxPayload: 64 * 1024 });
+  // The socket server repeats the http server's errors (a port already in use, for one). They are
+  // reported where the port is opened, so here they only need to not crash the process.
+  wss.on('error', () => {});
   wss.on('connection', (socket) => {
     socket.role = null;
     socket.room = null;
