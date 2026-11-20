@@ -73,7 +73,7 @@ export class CalibrationSession {
       result: { ok: false, reason, targets: usable.length, samples, fitError: 0, crossError: 0 },
     });
     if (still.length < MIN_TARGETS) {
-      return fail(`only ${still.length} of the dots had a visible face and open eyes`);
+      return fail(`only ${still.length} of ${this.targets.length} targets got enough good samples; keep your face in view and your eyes open`);
     }
 
     const stats = statsOf(usable);
