@@ -22,4 +22,4 @@ _Nothing recorded yet._
 | ID | Date | Type | Status | Summary | Ref |
 |---|---|---|---|---|---|
 | ET-T1 | 2026-11-19 | docs | closed | Start the permanent ticket log in the ticket database | — |
-| ET-T2 | 2026-11-19 | feature | open | Webcam gaze library: MediaPipe iris/eye-white landmarks, calibration, smoothing, three.js demo, tests, a bridge server and Unity/Unreal clients (MAT-T160) | — |
+| ET-T2 | 2026-11-19 | feature | closed | Webcam gaze library: MediaPipe iris/eye-white landmarks, calibration, smoothing, three.js demo, tests, a bridge server and Unity/Unreal clients (MAT-T160) | 194454e |
