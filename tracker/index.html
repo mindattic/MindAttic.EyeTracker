@@ -69,6 +69,7 @@ async function start(deviceId) {
   tracker = new EyeTracker({
     // The display, not this page, decides what the calibration means, so it is kept per room.
     storageKey: 'bridge.' + room,
+    space: 'display',
     camera: { video, deviceId, wasmBaseUrl: config.wasmBaseUrl, modelUrl: config.modelUrl },
   });
   tracker.on('status', render);

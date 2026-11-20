@@ -1,5 +1,6 @@
 import { Emitter } from './emitter.js';
 import { PROTOCOL_VERSION, decode, encode, type BridgeMessage, type PeersMessage, type Role } from './protocol.js';
+import { screenToViewport, viewportOnScreen, viewportToScreen } from './screenSpace.js';
 import type { CalibrationResult, GazeSample, GazeSource } from './types.js';
 
 export interface BridgeOptions {
@@ -7,6 +8,12 @@ export interface BridgeOptions {
   name?: string;
   /** Milliseconds between reconnection attempts. Zero turns reconnection off. */
   reconnectMs?: number;
+  /**
+   * Display side only. "viewport" (the default in a browser) calibrates the remote tracker against
+   * this monitor and converts its gaze to this page's viewport, so resizing or moving the window
+   * does not spoil the calibration. "display" passes points through untouched.
+   */
+  space?: 'viewport' | 'display';
 }
 
 interface LinkEvents extends Record<string, unknown> {
@@ -91,9 +98,11 @@ export class RemoteGazeSource extends Emitter<RemoteEvents> implements GazeSourc
   private readonly link: BridgeLink;
   private nextId = 1;
   private waiting = new Map<number, (message: BridgeMessage | null) => void>();
+  private readonly space: 'viewport' | 'display';
 
   constructor(url: string, options: BridgeOptions = {}) {
     super();
+    this.space = options.space ?? (typeof window !== 'undefined' && typeof window.screen !== 'undefined' ? 'viewport' : 'display');
     this.link = new BridgeLink(url, 'display', options);
     this.link.on('open', () => this.emit('connection', true));
     this.link.on('close', () => {
@@ -104,8 +113,9 @@ export class RemoteGazeSource extends Emitter<RemoteEvents> implements GazeSourc
     });
     this.link.on('message', (m) => {
       if (m.type === 'gaze') {
-        this.latest = m;
-        this.emit('gaze', m);
+        const sample = this.toViewport(m);
+        this.latest = sample;
+        this.emit('gaze', sample);
       } else if (m.type === 'peers' || m.type === 'welcome') {
         this.trackers = m.trackers;
         this.emit('peers', { type: 'peers', trackers: m.trackers, displays: m.displays });
@@ -119,6 +129,15 @@ export class RemoteGazeSource extends Emitter<RemoteEvents> implements GazeSourc
 
   get connected(): boolean {
     return this.link.connected;
+  }
+
+  private toViewport(sample: GazeSample): GazeSample {
+    if (this.space !== 'viewport') return sample;
+    const v = viewportOnScreen();
+    const clamp = (n: number) => (n < 0 ? 0 : n > 1 ? 1 : n);
+    const smooth = screenToViewport(sample.x, sample.y, v);
+    const raw = screenToViewport(sample.rawX, sample.rawY, v);
+    return { ...sample, x: clamp(smooth.x), y: clamp(smooth.y), rawX: raw.x, rawY: raw.y };
   }
 
   private request(id: number, timeoutMs: number): Promise<BridgeMessage | null> {
@@ -140,7 +159,8 @@ export class RemoteGazeSource extends Emitter<RemoteEvents> implements GazeSourc
 
   async calibCollect(x: number, y: number, ms: number): Promise<number> {
     const id = this.nextId++;
-    if (!this.link.send({ type: 'calib', op: 'collect', id, x, y, ms })) return 0;
+    const target = this.space === 'viewport' ? viewportToScreen(x, y) : { x, y };
+    if (!this.link.send({ type: 'calib', op: 'collect', id, x: target.x, y: target.y, ms })) return 0;
     const reply = await this.request(id, ms + 3000);
     return reply?.type === 'calib.collected' ? reply.samples : 0;
   }

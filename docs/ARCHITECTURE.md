@@ -109,12 +109,25 @@ filter differently.
 
 ## Display space
 
-A gaze point is normalized to a rectangle: (0, 0) top-left, (1, 1) bottom-right. That rectangle is
-whatever the calibration targets covered. In a browser it is the viewport. In an engine it is the
-game window. Nothing in the library knows the screen's size in pixels or centimetres.
+A gaze point handed to an app is normalized to a rectangle: (0, 0) top-left, (1, 1) bottom-right.
 
-The consequence: if the window moves or is resized, or the camera or the person shifts a lot, the
-mapping is stale and calibration should be run again.
+In a browser that rectangle is the page's viewport, as it is at that moment. The eyes look at the
+screen, not at a window, so the tracker fits its model in **screen space**: each calibration target
+is converted from its place in the viewport to its place on the monitor (`screenSpace.ts`), and
+each gaze estimate is converted back to the viewport using the window's current position and size.
+A calibration made in a small window, a large one or fullscreen therefore gives the same gaze
+point on the glass, and moving or resizing the window afterwards does not spoil it. (An earlier
+version fitted in viewport space; calibrating fullscreen on a 5120x1440 monitor and then playing
+in a 1920x1080 window squeezed the vertical range to half the window.)
+
+Accuracy is a fraction of the area the targets covered. Calibrate over the area you will look at:
+if the app runs in a window, calibrate in that window, not fullscreen on a much larger monitor.
+
+A tracker page that is only the camera for a display elsewhere uses `space: 'display'`: no
+conversion, because it knows nothing about the display's screen. The display converts instead
+(`RemoteGazeSource` does this in a browser). In Unity and Unreal the rectangle is the game window.
+
+Moving the camera, or the person shifting a lot, still means calibrating again.
 
 ## The bridge
 

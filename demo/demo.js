@@ -176,7 +176,7 @@ $('mouse').addEventListener('click', () => {
 });
 
 $('calibrate').addEventListener('click', async () => {
-  const result = await runCalibration(source, { points: 9, fullscreen: true });
+  const result = await runCalibration(source, { points: 9 });
   if (result.ok) {
     $('report').textContent = `Calibrated on ${result.targets} points. Expected error: about ${(result.crossError * 100).toFixed(1)}% of the screen. Run the accuracy check to measure it.`;
   } else if (result.reason !== 'cancelled') {

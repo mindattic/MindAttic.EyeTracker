@@ -4,6 +4,7 @@ import { Emitter } from './emitter.js';
 import type { FaceFeatures } from './features.js';
 import { isValidModel, type GazeModel } from './model.js';
 import { DEFAULT_PIPELINE, GazePipeline, type PipelineOptions } from './pipeline.js';
+import { screenToViewport, viewportOnScreen, viewportToScreen } from './screenSpace.js';
 import type { CalibrationResult, GazeSample, GazeSource, LandmarkFrame } from './types.js';
 
 export interface TrackerStatus {
@@ -24,6 +25,15 @@ export interface EyeTrackerOptions {
    * again. Use one key per screen-and-camera arrangement. Null turns storage off.
    */
   storageKey?: string | null;
+  /**
+   * What the gaze point is relative to.
+   * "viewport" (the default): this page's viewport, wherever the window is and whatever its size.
+   * The model is fitted in screen space and converted, so a calibration made fullscreen still holds
+   * in a window, and the other way round.
+   * "display": no conversion; the point is relative to whatever area the calibration targets
+   * covered. Use it when this page is only the camera and a display elsewhere draws the targets.
+   */
+  space?: 'viewport' | 'display';
 }
 
 export interface TrackerEvents extends Record<string, unknown> {
@@ -33,7 +43,8 @@ export interface TrackerEvents extends Record<string, unknown> {
   status: TrackerStatus;
 }
 
-const STORAGE_PREFIX = 'mindattic.eyetracker.model.';
+// v2: models are fitted in screen space. Older, viewport-space models are left behind.
+const STORAGE_PREFIX = 'mindattic.eyetracker.model.v2.';
 
 /**
  * Webcam gaze tracking in the browser: camera, MediaPipe face mesh, the gaze pipeline and
@@ -52,6 +63,7 @@ export class EyeTracker extends Emitter<TrackerEvents> implements GazeSource {
 
   private session: CalibrationSession | null = null;
   private readonly storageKey: string | null;
+  private readonly space: 'viewport' | 'display';
   private frames = 0;
   private fpsSince = 0;
 
@@ -60,6 +72,7 @@ export class EyeTracker extends Emitter<TrackerEvents> implements GazeSource {
     this.camera = new CameraLandmarkSource(options.camera);
     this.pipeline = new GazePipeline({ ...DEFAULT_PIPELINE, ...options.pipeline });
     this.storageKey = options.storageKey === undefined ? 'default' : options.storageKey;
+    this.space = options.space ?? 'viewport';
     this.loadCalibration();
   }
 
@@ -94,7 +107,7 @@ export class EyeTracker extends Emitter<TrackerEvents> implements GazeSource {
   }
 
   private onFrame(frame: LandmarkFrame | null, t: number): void {
-    const sample = this.pipeline.process(frame, t);
+    const sample = this.toOutputSpace(this.pipeline.process(frame, t));
     if (this.session?.collecting && this.pipeline.lastVector && !this.pipeline.lastBlink) {
       this.session.add(this.pipeline.lastVector);
     }
@@ -111,6 +124,16 @@ export class EyeTracker extends Emitter<TrackerEvents> implements GazeSource {
     this.emit('gaze', sample);
   }
 
+  /** The pipeline works in screen space; hand out the point relative to the page as it is right now. */
+  private toOutputSpace(sample: GazeSample): GazeSample {
+    if (this.space !== 'viewport') return sample;
+    const v = viewportOnScreen();
+    const clamp = (n: number) => (n < 0 ? 0 : n > 1 ? 1 : n);
+    const smooth = screenToViewport(sample.x, sample.y, v);
+    const raw = screenToViewport(sample.rawX, sample.rawY, v);
+    return { ...sample, x: clamp(smooth.x), y: clamp(smooth.y), rawX: raw.x, rawY: raw.y };
+  }
+
   private setStatus(patch: Partial<TrackerStatus>): void {
     this.status = { ...this.status, ...patch, calibrated: this.calibrated };
     this.emit('status', this.status);
@@ -124,7 +147,8 @@ export class EyeTracker extends Emitter<TrackerEvents> implements GazeSource {
 
   calibCollect(x: number, y: number, ms: number): Promise<number> {
     const session = (this.session ??= new CalibrationSession());
-    session.beginTarget(x, y);
+    const target = this.space === 'viewport' ? viewportToScreen(x, y) : { x, y };
+    session.beginTarget(target.x, target.y);
     return new Promise((resolve) => setTimeout(() => resolve(session.endTarget()), ms));
   }
 

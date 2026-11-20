@@ -21,8 +21,10 @@
   from the last.
 - Look at the dot's **centre** until it finishes filling. The first 700 ms at each dot are not
   recorded, to give the eyes time to arrive.
-- Calibrate **fullscreen**, or at least do not move or resize the window afterwards. The gaze
-  point is relative to the area the dots covered.
+- Calibrate **over the area you will look at**. If the app runs in a window, calibrate in that
+  window. Calibrating fullscreen on a very wide monitor and then using a small window spends the
+  accuracy on parts of the screen you never look at. The window may be moved or resized
+  afterwards; the browser library allows for that.
 - Check the reported error. Under 5% of the screen is good. Over 10% usually means poor light, a
   moving head or a camera far off to one side; fix that and calibrate again.
 - **Recalibrate when things change**: a different seat, a moved camera, a different person.
