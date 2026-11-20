@@ -28,9 +28,11 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FGazeCalibrationFinishedSignature, c
 /**
  * Runs the calibration flow against a UGazeTrackerSubsystem: nine targets by default (the centre,
  * the four corners and the four edge midpoints, each 8% in from the edge), 700 ms for the eye to
- * land on each, then 900 ms of sampling. After the dots come three head-movement steps: the user
- * keeps looking at a dot while moving their head, which is what teaches the tracker to allow for
- * head movement and for where the camera is.
+ * land on each, then 900 ms of sampling. After the dots comes the follow-the-dot pass: the target
+ * moves slowly round the whole area for 24 seconds and the user follows it with their eyes, which
+ * samples the area densely and improves accuracy more than anything else. Last come three
+ * head-movement steps: the user keeps looking at a dot while moving their head, which is what
+ * teaches the tracker to allow for head movement and for where the camera is.
  *
  * It draws nothing. Whatever HUD the game has reads GetCurrentTarget and GetCollectProgress each
  * frame and draws the dot. The targets are normalized display points, so draw them over the same
@@ -67,14 +69,18 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Gaze|Calibration")
 	bool HasTarget() const { return State == EGazeCalibrationState::Settling || State == EGazeCalibrationState::Collecting; }
 
-	/** The target to draw, as a normalized display point (0..1, Y down). */
+	/** Where the follow-the-dot target is this many seconds into its pass, as a normalized display point. */
+	UFUNCTION(BlueprintPure, Category = "Gaze|Calibration")
+	static FVector2D PursuitPath(double Seconds);
+
+	/** The target to draw, as a normalized display point (0..1, Y down). It moves every frame during the follow-the-dot pass. */
 	UFUNCTION(BlueprintPure, Category = "Gaze|Calibration")
 	FVector2D GetCurrentTarget() const;
 
 	UFUNCTION(BlueprintPure, Category = "Gaze|Calibration")
 	int32 GetTargetIndex() const { return TargetIndex; }
 
-	/** Every step: the dots and the head-movement steps. */
+	/** Every step: the dots, the follow-the-dot pass (one step) and the head-movement steps. */
 	UFUNCTION(BlueprintPure, Category = "Gaze|Calibration")
 	int32 GetTargetCount() const { return Targets.Num(); }
 
@@ -86,11 +92,15 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Gaze|Calibration")
 	bool IsHeadMovementStep() const { return HasTarget() && StepHead.IsValidIndex(TargetIndex) && StepHead[TargetIndex]; }
 
+	/** True while the current target is the follow-the-dot pass, including the moment before it starts moving. */
+	UFUNCTION(BlueprintPure, Category = "Gaze|Calibration")
+	bool IsPursuitStep() const { return HasTarget() && TargetIndex == PursuitIndex; }
+
 	/** What to tell the player about the current target. Show it beside the dot. */
 	UFUNCTION(BlueprintPure, Category = "Gaze|Calibration")
 	FString GetInstruction() const { return HasTarget() && StepText.IsValidIndex(TargetIndex) ? StepText[TargetIndex] : FString(); }
 
-	/** 0 while settling, rising to 1 over the sampling time. Use it to fill the dot. */
+	/** 0 while settling, rising to 1 over the sampling time (the whole pass, for follow-the-dot). Use it to fill the dot. */
 	UFUNCTION(BlueprintPure, Category = "Gaze|Calibration")
 	double GetCollectProgress() const;
 
@@ -122,7 +132,15 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gaze|Calibration")
 	double CollectSeconds = 0.9;
 
-	/** Run the head-movement steps after the dots. Without them the calibration drifts when the head moves. */
+	/** Run the follow-the-dot pass after the dots. It samples the whole area densely, the biggest single gain in accuracy. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gaze|Calibration")
+	bool bPursuit = true;
+
+	/** How long the follow-the-dot pass lasts. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gaze|Calibration")
+	double PursuitSeconds = 24.0;
+
+	/** Run the head-movement steps last. Without them the calibration drifts when the head moves. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gaze|Calibration")
 	bool bHeadMovement = true;
 
@@ -141,6 +159,10 @@ public:
 private:
 	void BeginTarget(int32 Index);
 	void BeginCollect();
+	/** Move on from the current step: to the next target, or to the fit after the last one. */
+	void NextStep();
+	/** Ask the tracker for the next 200 ms of the follow-the-dot pass. */
+	void SendPursuitSlice();
 	void BeginFit();
 	void Finish(const FGazeCalibrationResult& InResult);
 
@@ -155,6 +177,10 @@ private:
 	TArray<bool> StepHead;
 	TArray<FString> StepText;
 	int32 DotCount = 0;
+	/** Which step is the follow-the-dot pass, or INDEX_NONE when there is none. */
+	int32 PursuitIndex = INDEX_NONE;
+	/** True from sending a slice of the pass until the tracker answers it. Only one is out at a time. */
+	bool bPursuitSliceOut = false;
 	void AddStep(const FVector2D& Point, double Settle, double Collect, bool bHead, const FString& Text);
 	int32 TargetIndex = 0;
 	double StateTime = 0.0;

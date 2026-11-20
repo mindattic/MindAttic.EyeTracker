@@ -2,6 +2,23 @@
 
 #include "GazeTrackerSubsystem.h"
 
+namespace
+{
+	/** The follow-the-dot pass waits this long with the dot at the start of its path. */
+	const double GazePursuitSettleSeconds = 1.3;
+	/** The pass is sampled in slices of this length, each sent as one collect. */
+	const double GazePursuitSliceSeconds = 0.2;
+}
+
+FVector2D UGazeCalibrator::PursuitPath(double Seconds)
+{
+	// The reference path from docs/PROTOCOL.md: out and back in every direction, so any lag of the
+	// eyes behind the dot cancels instead of biasing the fit.
+	return FVector2D(
+		0.5 + 0.43 * FMath::Sin(2.0 * UE_DOUBLE_PI * Seconds / 8.0),
+		0.5 + 0.41 * FMath::Sin(2.0 * UE_DOUBLE_PI * Seconds / 6.0 + UE_DOUBLE_PI / 2.0));
+}
+
 TArray<FVector2D> UGazeCalibrator::MakePattern(int32 Count, double Margin)
 {
 	const double Lo = Margin;
@@ -64,6 +81,14 @@ bool UGazeCalibrator::Start(UGazeTrackerSubsystem* InTracker)
 		AddStep(Dot, SettleSeconds, CollectSeconds, false, TEXT("Look at each dot until it fills. Keep your head still and move only your eyes."));
 	}
 	DotCount = Dots.Num();
+	PursuitIndex = INDEX_NONE;
+	bPursuitSliceOut = false;
+	if (bPursuit && PursuitSeconds > 0.0)
+	{
+		// Eyes following a moving dot, head still. One step, sampled in 200 ms slices.
+		PursuitIndex = Targets.Num();
+		AddStep(PursuitPath(0.0), GazePursuitSettleSeconds, PursuitSeconds, false, TEXT("Now follow the dot with your eyes as it moves. Keep your head still."));
+	}
 	if (bHeadMovement)
 	{
 		// Eyes fixed, head moving. The reference sequence from docs/PROTOCOL.md.
@@ -105,6 +130,10 @@ void UGazeCalibrator::Cancel()
 
 FVector2D UGazeCalibrator::GetCurrentTarget() const
 {
+	if (TargetIndex == PursuitIndex && State == EGazeCalibrationState::Collecting)
+	{
+		return PursuitPath(StateTime);
+	}
 	return Targets.IsValidIndex(TargetIndex) ? Targets[TargetIndex] : FVector2D(0.5, 0.5);
 }
 
@@ -129,6 +158,13 @@ void UGazeCalibrator::BeginCollect()
 	State = EGazeCalibrationState::Collecting;
 	StateTime = 0.0;
 
+	if (TargetIndex == PursuitIndex)
+	{
+		bPursuitSliceOut = false;
+		SendPursuitSlice();
+		return;
+	}
+
 	const FVector2D Target = GetCurrentTarget();
 	const int32 ThisRun = RunId;
 	const int32 ThisTarget = TargetIndex;
@@ -145,15 +181,41 @@ void UGazeCalibrator::BeginCollect()
 			}
 			// The answer, or its timeout, moves on to the next target either way. A target with no
 			// samples just contributes nothing to the fit.
-			if (ThisTarget + 1 < Self->Targets.Num())
-			{
-				Self->BeginTarget(ThisTarget + 1);
-			}
-			else
-			{
-				Self->BeginFit();
-			}
+			Self->NextStep();
 		}, bHead);
+}
+
+void UGazeCalibrator::NextStep()
+{
+	if (TargetIndex + 1 < Targets.Num())
+	{
+		BeginTarget(TargetIndex + 1);
+	}
+	else
+	{
+		BeginFit();
+	}
+}
+
+void UGazeCalibrator::SendPursuitSlice()
+{
+	// The position the dot will have at the middle of the slice, so the samples of the slice are
+	// centred on it. headMoving marks the samples as taken on the move.
+	const FVector2D Middle = PursuitPath(StateTime + GazePursuitSliceSeconds * 0.5);
+	const int32 ThisRun = RunId;
+	TWeakObjectPtr<UGazeCalibrator> WeakThis(this);
+	bPursuitSliceOut = true;
+	Tracker->CalibCollectNative(Middle.X, Middle.Y, FMath::RoundToInt32(GazePursuitSliceSeconds * 1000.0),
+		[WeakThis, ThisRun](int32 /*Samples*/)
+		{
+			UGazeCalibrator* Self = WeakThis.Get();
+			if (Self && Self->RunId == ThisRun)
+			{
+				// Tick sends the next slice, or ends the pass. Not from here: the answer can come
+				// back at once when the connection is down.
+				Self->bPursuitSliceOut = false;
+			}
+		}, true);
 }
 
 void UGazeCalibrator::BeginFit()
@@ -216,8 +278,29 @@ void UGazeCalibrator::Tick(float DeltaTime)
 			Message.Reset();
 		}
 		break;
+	case EGazeCalibrationState::Collecting:
+		// A dot or a head-movement step ends when the subsystem answers or times the request out.
+		// The follow-the-dot pass is a run of slices: each is sent when the one before is answered.
+		if (TargetIndex == PursuitIndex && !bPursuitSliceOut)
+		{
+			if (!Tracker || !Tracker->IsConnected())
+			{
+				FGazeCalibrationResult Lost;
+				Lost.Reason = TEXT("the connection to the bridge was lost");
+				Finish(Lost);
+			}
+			else if (StateTime >= PursuitSeconds)
+			{
+				NextStep();
+			}
+			else
+			{
+				SendPursuitSlice();
+			}
+		}
+		break;
 	default:
-		// Collecting and Fitting end when the subsystem answers or times the request out.
+		// Fitting ends when the subsystem answers or times the request out.
 		break;
 	}
 }

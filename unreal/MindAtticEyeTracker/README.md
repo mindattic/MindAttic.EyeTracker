@@ -74,13 +74,26 @@ The game draws the targets, because only it knows its own screen. The tracker co
 samples, because only it has the camera.
 
 `UGazeCalibrator` runs the standard flow: nine targets (700 ms for the eye to land, 900 ms of
-sampling each), then three head-movement steps, then the fit. In a head-movement step the user
+sampling each), then the follow-the-dot pass, then three head-movement steps, then the fit.
+
+In the follow-the-dot pass the target moves slowly round the whole area for 24 seconds and the user
+follows it with their eyes, head still. It samples the area densely instead of at nine places, which
+improves accuracy more than anything else. The path is x = 0.5 + 0.43 sin(2 pi t / 8 s),
+y = 0.5 + 0.41 sin(2 pi t / 6 s + pi / 2) (`PursuitPath`). The dot waits 1.3 seconds at the start of
+the path, then every 200 ms the calibrator sends a `collect` of 200 ms with `"headMoving": true` and
+the position the dot will have at the middle of that slice, waiting for each answer before sending
+the next. Set `bPursuit` to false to skip the pass, or change its length with `PursuitSeconds`.
+
+In a head-movement step the user
 keeps looking at one dot while moving their head: (0.5, 0.5) for 6 seconds, then (0.18, 0.22) and
 (0.82, 0.78) for 4 seconds each, with 1200 ms before each. These are sent as `collect` with
 `"headMoving": true` and teach the tracker to allow for head movement. Set `bHeadMovement` to false
 to skip them.
 
-It draws nothing itself; the game's HUD reads the current target every frame. During a
+It draws nothing itself; the game's HUD reads the current target every frame. During the
+follow-the-dot pass `IsPursuitStep()` is true and `GetCurrentTarget()` moves every frame: draw the
+dot there and show `GetInstruction()` ("Now follow the dot with your eyes as it moves. Keep your
+head still.") somewhere the dot does not pass, such as the top centre. During a
 head-movement step `IsHeadMovementStep()` is true: draw the dot in amber and show
 `GetInstruction()` ("Keep your eyes on the dot and slowly turn your head left and right, then nod
 up and down." and so on). `GetDotCount()` is the number of plain dots and `GetTargetCount()` the
@@ -128,7 +141,7 @@ sent at any time after a calibration and has no answer.
 | --- | --- |
 | `Public/GazeTypes.h` | `FGazeSample`, `FGazeCalibrationResult` |
 | `Public/GazeTrackerSubsystem.h` | The connection, the latest sample, the calibration calls |
-| `Public/GazeCalibrator.h` | The nine-point flow |
+| `Public/GazeCalibrator.h` | The calibration flow: nine dots, follow-the-dot, head movement |
 
 ## Limits
 
