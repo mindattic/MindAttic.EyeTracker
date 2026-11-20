@@ -21,6 +21,10 @@ namespace MindAttic.EyeTracker
         public int collectMs = 900;
         [Tooltip("How far in from the edge the outer targets sit, as a fraction of the screen.")]
         public float margin = 0.08f;
+        [Tooltip("After the dots, have the user follow a slowly moving dot with their eyes. It samples the whole area densely instead of at nine places, which is the biggest single gain in accuracy.")]
+        public bool pursuit = true;
+        [Tooltip("How long the follow-the-dot pass lasts.")]
+        public float pursuitSeconds = 24f;
         [Tooltip("After the dots, ask the user to keep looking at a dot while moving their head. This teaches the tracker where the camera is and how to allow for head movement.")]
         public bool headMovement = true;
         [Tooltip("Time to let the eye land on a head-movement target before sampling starts.")]
@@ -42,6 +46,7 @@ namespace MindAttic.EyeTracker
         private Vector2 target;
         private float fill;
         private bool headStep;
+        private bool pursuing;
         private string instruction = "";
         private string message = "";
         private Texture2D white;
@@ -154,6 +159,41 @@ namespace MindAttic.EyeTracker
                 yield break;
             }
 
+            if (pursuit)
+            {
+                // Follow the dot: a slow figure that sweeps the whole area, out and back in every direction,
+                // so any lag of the eyes behind the dot cancels instead of biasing the fit.
+                pursuing = true;
+                instruction = "Now follow the dot with your eyes as it moves. Keep your head still.";
+                target = PursuitPath(0f);
+                fill = 0.39f;
+                float ready = Time.unscaledTime + 1.3f;
+                while (Time.unscaledTime < ready && !cancelled) yield return null;
+
+                // The dot is drawn every frame. Every 200 ms the tracker is asked to sample for 200 ms at
+                // the position the dot will have in the middle of that slice; each answer is awaited
+                // before the next request goes out.
+                const int sliceMs = 200;
+                float started = Time.unscaledTime;
+                while (Time.unscaledTime - started < pursuitSeconds && !cancelled)
+                {
+                    Vector2 middle = PursuitPath(Time.unscaledTime - started + sliceMs / 2000f);
+                    Task<int> slice = client.CollectAsync(middle.x, middle.y, sliceMs, true);
+                    while (!slice.IsCompleted && !cancelled)
+                    {
+                        target = PursuitPath(Time.unscaledTime - started);
+                        yield return null;
+                    }
+                }
+                pursuing = false;
+                instruction = "";
+                if (cancelled)
+                {
+                    Finish(GazeCalibrationResult.Failed("cancelled"));
+                    yield break;
+                }
+            }
+
             if (headMovement)
             {
                 // Eyes fixed, head moving: the only way to learn how head movement shifts the picture.
@@ -199,6 +239,14 @@ namespace MindAttic.EyeTracker
             Finish(result);
         }
 
+        /// <summary>Where the follow-the-dot target is t seconds into the pass (docs/PROTOCOL.md).</summary>
+        public static Vector2 PursuitPath(float seconds)
+        {
+            return new Vector2(
+                0.5f + 0.43f * Mathf.Sin(2f * Mathf.PI * seconds / 8f),
+                0.5f + 0.41f * Mathf.Sin(2f * Mathf.PI * seconds / 6f + Mathf.PI / 2f));
+        }
+
         private struct HeadStep
         {
             public float x;
@@ -226,6 +274,7 @@ namespace MindAttic.EyeTracker
         private void Finish(GazeCalibrationResult result)
         {
             phase = Phase.Idle;
+            pursuing = false;
             headStep = false;
             instruction = "";
             LastResult = result;
@@ -271,14 +320,15 @@ namespace MindAttic.EyeTracker
                 float dot = 8f * scale * Mathf.Lerp(1f, 4.6f, fill);
                 GUI.color = headStep ? new Color(1f, 0.85f, 0.5f, 1f) : Color.white;
                 GUI.DrawTexture(new Rect(centre.x - dot / 2, centre.y - dot / 2, dot, dot), disc);
-                if (headStep && !string.IsNullOrEmpty(instruction))
+                if ((headStep || pursuing) && !string.IsNullOrEmpty(instruction))
                 {
-                    // The instruction sits away from the dot: below it for the upper targets, above for the lower.
+                    // The instruction sits away from a fixed dot: below it for the upper targets, above for
+                    // the lower. The moving dot passes everywhere, so its instruction stays near the bottom.
                     textStyle.fontSize = Mathf.RoundToInt(22f * scale);
-                    GUI.color = new Color(1f, 0.9f, 0.7f, 1f);
+                    GUI.color = headStep ? new Color(1f, 0.9f, 0.7f, 1f) : new Color(0.91f, 0.93f, 0.99f, 0.85f);
                     float boxW = Mathf.Min(w - 48f, 760f * scale);
                     float boxH = 110f * scale;
-                    float boxY = target.y > 0.6f ? h * 0.18f : h * 0.68f;
+                    float boxY = pursuing ? h * 0.8f : target.y > 0.6f ? h * 0.18f : h * 0.68f;
                     GUI.Label(new Rect((w - boxW) / 2, boxY, boxW, boxH), instruction, textStyle);
                 }
             }

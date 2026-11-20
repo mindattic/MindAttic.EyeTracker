@@ -49,7 +49,7 @@ public class LookAtIt : MonoBehaviour
 | `GazeSample` | One `gaze` message: `t`, `x`, `y`, `rawX`, `rawY`, `confidence`, `face`, `blink`, `calibrated`. |
 | `GazeBridgeClient` | Plain C#, no MonoBehaviour. A `ClientWebSocket` on a background task. Says `hello` as a `display`, reconnects every 1.5 seconds, keeps the latest sample and the tracker count where any thread can read them, and runs the calibration requests (`BeginCalibration`, `CollectAsync` with an optional `headMoving`, `FinishAsync`, `ClearCalibration`, `Hint`). |
 | `GazeTracker` | MonoBehaviour. `url` (default `ws://localhost:8787/gaze`), `room`, `Latest`, `HasTracker`, `Connected`, `Confidence`, `Normalized`, `ScreenPoint`, a `Sample` event raised on the main thread in `Update`, and `Hint` / `HintScreenPoint`. |
-| `GazeCalibrator` | MonoBehaviour. `Begin()` runs the nine-point calibration and then the head-movement steps over the whole screen with IMGUI and reports a `GazeCalibrationResult` (`ok`, `crossError`, ...) through `Completed` and `LastResult`. Esc cancels. |
+| `GazeCalibrator` | MonoBehaviour. `Begin()` runs the nine-point calibration, the follow-the-dot pass and the head-movement steps over the whole screen with IMGUI and reports a `GazeCalibrationResult` (`ok`, `crossError`, ...) through `Completed` and `LastResult`. Esc cancels. |
 
 ### Coordinates
 
@@ -73,7 +73,14 @@ samples, because only it has the camera. `GazeCalibrator` does the display's hal
 (the centre, the four corners and the four edge midpoints, each 8% in from the edge), 700 ms for
 the eye to land, then 900 ms of sampling on each.
 
-After the dots come three **head-movement steps**, drawn with an amber dot and an instruction on
+After the dots comes a **follow-the-dot** pass, which improves accuracy more than anything else. The
+dot moves slowly round the whole screen for 24 seconds, along x = 0.5 + 0.43 sin(2 pi t / 8 s),
+y = 0.5 + 0.41 sin(2 pi t / 6 s + pi / 2), and the user follows it with their eyes, head still.
+Every 200 ms the calibrator sends a `collect` of 200 ms with `"headMoving": true` at the position
+the dot will have at the middle of that slice, and waits for the answer before sending the next.
+Set `pursuit` to false to skip it, or change `pursuitSeconds`.
+
+Then come three **head-movement steps**, drawn with an amber dot and an instruction on
 screen: keep your eyes on the dot and move your head. They are (0.5, 0.5) for 6000 ms, then
 (0.18, 0.22) and (0.82, 0.78) for 4000 ms each, with 1200 ms before each for the eye to arrive.
 Each is sent as a `collect` with `"headMoving": true`. These steps teach the tracker where the
