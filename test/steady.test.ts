@@ -59,7 +59,13 @@ describe('FixationFilter', () => {
     const f = new FixationFilter();
     for (let i = 0; i < 60; i++) f.filter(0.5, 0.5);
     let out = { x: 0, y: 0 };
-    for (let i = 0; i < 8; i++) out = f.filter(0.5 + DEFAULT_FIXATION.radius * 1.5, 0.5);
+    // 1.5x radius sat almost exactly at this filter's own noise floor for a zero-noise synthetic
+    // signal (the adaptive threshold settles near `radius` itself once scatter2 decays), so it
+    // was indistinguishable from scatter by the filter's own formula; 3x radius is comfortably
+    // above that floor while still well under the leap path's instant single-estimate trigger
+    // (which needs latest > threshold * 4), so this still exercises the "several estimates
+    // gradually agree" detection path rather than the single-sample fast path.
+    for (let i = 0; i < 8; i++) out = f.filter(0.5 + DEFAULT_FIXATION.radius * 3, 0.5);
     expect(out.x).toBeGreaterThan(0.5 + DEFAULT_FIXATION.radius);
   });
 });
