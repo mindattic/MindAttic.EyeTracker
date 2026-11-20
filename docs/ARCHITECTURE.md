@@ -101,6 +101,13 @@ them. A constant and a linear map are exactly what the fit solves for: the bias 
 camera's offset from the screen, and the weights absorb its angle and the screen's size. They are
 found once at calibration and applied to every frame afterwards.
 
+Put another way: the lens and the face are two planes. The head-pose matrix gives the face plane's
+distance from the lens plane and the angle between them for every frame (the gaze lab shows both
+live, as "Distance" and "Face vs lens"). The screen is a third plane, fixed to the lens. The
+discrepancy between lens and screen is constant, so the fit finds it once; the discrepancy between
+face and lens changes all the time, so it is measured every frame and fed through the same
+constants. Learning in use (below) keeps refining those constants.
+
 ### Calibration
 
 Calibration has two parts.

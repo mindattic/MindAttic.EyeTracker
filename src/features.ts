@@ -53,6 +53,13 @@ export interface FaceFeatures {
   hy: number;
   /** Distance from the camera to the face, in centimetres. */
   dist: number;
+  /**
+   * The angle between the plane of the face and the plane of the lens, in radians, split into its
+   * left/right and up/down parts. Zero means the face is square to the camera. These are for
+   * display and diagnosis; the model uses the head point, which carries the same information.
+   */
+  planeYaw: number;
+  planePitch: number;
   /** Head turn left/right: nose offset along the eye line, in eye-distance units. */
   yaw: number;
   /** Head tilt up/down: nose offset below the eye line, in eye-distance units. */
@@ -126,7 +133,7 @@ function headPoint(
   yaw: number,
   pitch: number,
   aspect: number,
-): { hx: number; hy: number; dist: number } {
+): { hx: number; hy: number; dist: number; planeYaw: number; planePitch: number } {
   const m = frame.matrix;
   if (m && m.length >= 16) {
     // The matrix may arrive column-major or row-major; the translation is the part with the big
@@ -141,7 +148,13 @@ function headPoint(
     if (Number.isFinite(tx + ty + tz + fx + fy + fz) && Math.abs(tz) > 1) {
       // A face turned nearly side-on would send the point to infinity; hold the slope finite.
       if (Math.abs(fz) < 0.25) fz = fz < 0 ? -0.25 : 0.25;
-      return { hx: tx - (tz * fx) / fz, hy: ty - (tz * fy) / fz, dist: Math.abs(tz) };
+      return {
+        hx: tx - (tz * fx) / fz,
+        hy: ty - (tz * fy) / fz,
+        dist: Math.abs(tz),
+        planeYaw: Math.atan2(fx, Math.abs(fz)),
+        planePitch: Math.atan2(fy, Math.abs(fz)),
+      };
     }
   }
   const span = 2 * Math.tan(CAMERA_FOV_V / 2);
@@ -152,7 +165,13 @@ function headPoint(
   // between the eyes gives the tangent of the head's turn and tilt.
   const tanYaw = yaw * 2.1;
   const tanPitch = (pitch - 0.556) * 2.1;
-  return { hx: tx + dist * tanYaw, hy: ty + dist * tanPitch, dist };
+  return {
+    hx: tx + dist * tanYaw,
+    hy: ty + dist * tanPitch,
+    dist,
+    planeYaw: Math.atan(tanYaw),
+    planePitch: Math.atan(tanPitch),
+  };
 }
 
 /** Reduce a face mesh to the handful of numbers gaze depends on. Returns null if the mesh has no iris points. */
@@ -181,6 +200,8 @@ export function extractFeatures(frame: LandmarkFrame): FaceFeatures | null {
     hx: head.hx,
     hy: head.hy,
     dist: head.dist,
+    planeYaw: head.planeYaw,
+    planePitch: head.planePitch,
     yaw,
     pitch,
     roll: Math.atan2(dy, dx),

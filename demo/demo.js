@@ -134,6 +134,14 @@ $('camera').addEventListener('click', async () => {
     set('s-fps', s.state === 'running' ? `${s.fps}/s` : s.state, s.fps >= 20 ? 'ok' : 'warn');
   });
   tracker.on('frame', drawPreview);
+  tracker.on('frame', ({ features }) => {
+    if (!features) return;
+    // The face plane against the lens plane: how far away, and how many degrees off square.
+    const deg = (r) => `${r >= 0 ? '+' : ''}${((r * 180) / Math.PI).toFixed(0)}`;
+    set('s-dist', `${features.dist.toFixed(0)} cm`);
+    set('s-plane', `${deg(features.planeYaw)} turn, ${deg(features.planePitch)} tilt`);
+    set('s-learned', `${tracker.learned} samples`);
+  });
   $('report').textContent = 'Starting the camera and loading the face model...';
   try {
     await tracker.start();
