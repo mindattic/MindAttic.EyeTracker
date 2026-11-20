@@ -44,7 +44,7 @@ export interface GazeMessage extends GazeSample {
 /** Display to trackers: drive a calibration whose targets the display is showing. */
 export type CalibMessage =
   | { type: 'calib'; op: 'begin' }
-  | { type: 'calib'; op: 'collect'; id: number; x: number; y: number; ms: number }
+  | { type: 'calib'; op: 'collect'; id: number; x: number; y: number; ms: number; headMoving?: boolean }
   | { type: 'calib'; op: 'finish'; id: number }
   | { type: 'calib'; op: 'clear' };
 

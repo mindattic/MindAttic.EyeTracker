@@ -2,9 +2,11 @@
 
 ## Setting up the camera
 
-- **Put the camera at the screen.** Directly above or below the screen's centre, facing the user.
-  A laptop's built-in webcam is already in the right place. A phone should be propped against the
-  bottom edge of the monitor, or on a stand at its top, not off to one side.
+- **Put the camera on the screen's edge, facing the user.** It does not have to be centred: the
+  calibration works out where it is. Nearer the middle of an edge is still better than a far
+  corner, because the camera sees both eyes more squarely. A laptop's built-in webcam is fine. A
+  phone can be propped against the bottom edge of the monitor or stood at its top.
+- **Do not move the camera after calibrating.** Its position is part of what was calibrated.
 - **Light the face from the front.** A window or lamp behind the user turns the face into a
   silhouette and the irises disappear. A lamp behind the screen is ideal.
 - **Sit at arm's length**, with the face filling a good part of the frame. The tracker's
@@ -17,8 +19,12 @@
 ## Calibrating
 
 - Calibrate **in the posture you will use**. Leaning back afterwards changes everything.
-- Keep the head still and **move only the eyes**. The dots are placed so each one is a clear jump
-  from the last.
+- For the nine dots, keep the head still and **move only the eyes**. The dots are placed so each
+  one is a clear jump from the last.
+- For the three amber dots that follow, do the opposite: **keep your eyes on the dot and move
+  your head**. Turn it left and right, nod, lean in and back, shift side to side, slowly, about as
+  far as you would while playing. This is what lets the tracker allow for head movement later;
+  the more of your natural range it sees, the better.
 - Look at the dot's **centre** until it finishes filling. The first 700 ms at each dot are not
   recorded, to give the eyes time to arrive.
 - Calibrate **over the area you will look at**. If the app runs in a window, calibrate in that

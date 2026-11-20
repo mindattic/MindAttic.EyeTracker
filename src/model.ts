@@ -1,10 +1,11 @@
-import { FEATURE_COUNT } from './features.js';
+import { FEATURE_COUNT, FEATURE_VERSION } from './features.js';
 import { dot } from './math/ridge.js';
 import type { Point } from './types.js';
 
 /** A fitted gaze mapping: two weight vectors over `featureVector`. Plain JSON, safe to store. */
 export interface GazeModel {
-  version: 1;
+  /** The feature layout this model was fitted for (FEATURE_VERSION). */
+  version: number;
   features: number;
   wx: number[];
   wy: number[];
@@ -26,21 +27,22 @@ export function predict(model: GazeModel, phi: ArrayLike<number>): Point {
 export function builtInModel(): GazeModel {
   const wx = new Array<number>(FEATURE_COUNT).fill(0);
   const wy = new Array<number>(FEATURE_COUNT).fill(0);
-  // Unmirrored image: looking toward the screen's right moves the iris toward image-left.
+  // Unmirrored image: looking toward the right of the screen moves the iris toward image-left.
+  // Indices 3..6 are the x and y terms of the right and left eyes in featureVector.
   wx[0] = 0.5;
-  wx[1] = -0.25;
   wx[3] = -0.25;
+  wx[5] = -0.25;
   wy[0] = 0.5;
-  wy[2] = 0.5;
   wy[4] = 0.5;
-  return { version: 1, features: FEATURE_COUNT, wx, wy, createdAt: 0, crossError: 0, builtIn: true };
+  wy[6] = 0.5;
+  return { version: FEATURE_VERSION, features: FEATURE_COUNT, wx, wy, createdAt: 0, crossError: 0, builtIn: true };
 }
 
 export function isValidModel(m: unknown): m is GazeModel {
   const g = m as GazeModel | null;
   return (
     !!g &&
-    g.version === 1 &&
+    g.version === FEATURE_VERSION &&
     g.features === FEATURE_COUNT &&
     Array.isArray(g.wx) &&
     Array.isArray(g.wy) &&

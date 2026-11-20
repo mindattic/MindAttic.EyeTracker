@@ -10,6 +10,11 @@ export interface CalibrationUIOptions {
   settleMs: number;
   /** Time spent sampling each target. */
   collectMs: number;
+  /**
+   * After the dots, ask the user to keep looking at a dot while moving their head. This is what
+   * teaches the tracker where the camera is and how to allow for head movement. On by default.
+   */
+  headMovement: boolean;
   /** Go fullscreen for the duration, so the display space is the whole screen. */
   fullscreen: boolean;
   /** The element the targets are laid out over. Defaults to the viewport. */
@@ -23,11 +28,12 @@ export const DEFAULT_CALIBRATION_UI: CalibrationUIOptions = {
   settleMs: 700,
   collectMs: 900,
   fullscreen: false,
+  headMovement: true,
   intro: 'Look at each dot until it fills. Keep your head still and move only your eyes.',
 };
 
 /** A cross error above this (in display units) means the gaze point will be of little use. */
-export const POOR_CALIBRATION = 0.15;
+export const POOR_CALIBRATION = 0.2;
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -128,6 +134,36 @@ export async function runCalibration(
       await source.calibCollect(target.x, target.y, o.collectMs);
     }
     if (cancelled) return cancelResult;
+
+    if (o.headMovement) {
+      // Eyes fixed, head moving: the only way to learn how head movement shifts the picture, and
+      // with it where the camera sits relative to the screen.
+      const prompt = document.createElement('div');
+      prompt.style.cssText =
+        'position:absolute;left:50%;bottom:9%;transform:translateX(-50%);max-width:36em;text-align:center;padding:0 24px';
+      overlay.appendChild(prompt);
+      dot.style.borderColor = '#ffc266';
+      const steps: Array<{ x: number; y: number; ms: number; text: string }> = [
+        { x: 0.5, y: 0.5, ms: 6000, text: 'Keep your eyes on the dot and slowly turn your head left and right, then nod up and down.' },
+        { x: 0.18, y: 0.22, ms: 4000, text: 'Eyes on the dot again. Lean a little closer, then back, then side to side.' },
+        { x: 0.82, y: 0.78, ms: 4000, text: 'Once more: eyes on the dot, move your head around gently.' },
+      ];
+      for (const step of steps) {
+        if (cancelled) return cancelResult;
+        prompt.textContent = step.text;
+        dot.style.left = `${step.x * 100}%`;
+        dot.style.top = `${step.y * 100}%`;
+        fill.style.transition = 'none';
+        fill.style.transform = 'scale(1)';
+        await wait(1200);
+        if (cancelled) return cancelResult;
+        fill.style.transition = `transform ${step.ms}ms linear`;
+        fill.style.transform = 'scale(4.6)';
+        await source.calibCollect(step.x, step.y, step.ms, true);
+      }
+      prompt.remove();
+      if (cancelled) return cancelResult;
+    }
 
     dot.style.display = 'none';
     message.style.display = 'block';

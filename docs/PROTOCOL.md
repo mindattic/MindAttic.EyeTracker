@@ -74,7 +74,8 @@ samples, because only it has the camera.
 1. `{ "type": "calib", "op": "begin" }` starts a new calibration.
 2. For each target, the display draws it, waits about 700 ms for the eye to land, then sends
    `{ "type": "calib", "op": "collect", "id": 7, "x": 0.08, "y": 0.08, "ms": 900 }`.
-   The tracker samples for `ms` milliseconds and answers
+   Add `"headMoving": true` for a step where the user keeps looking at the target while moving
+   their head (see below). The tracker samples for `ms` milliseconds and answers
    `{ "type": "calib.collected", "id": 7, "samples": 26 }`. The display keeps the target visible
    until the answer arrives (allow `ms` plus a few seconds, then move on).
 3. `{ "type": "calib", "op": "finish", "id": 8 }` fits the model. The tracker answers
@@ -85,6 +86,14 @@ samples, because only it has the camera.
    or `"ok": false` with a `reason`. `crossError` is the expected error on points the fit was not
    trained on, in display units (0.03 means about 3% of the screen).
 4. `{ "type": "calib", "op": "clear" }` drops the calibration.
+
+After the dots, a display should run **head-movement steps**: show a target, ask the user to keep
+their eyes on it while they slowly turn, nod and lean, and send `collect` with `headMoving: true`
+for four to six seconds. The reference sequence is (0.5, 0.5) for 6000 ms, then (0.18, 0.22) and
+(0.82, 0.78) for 4000 ms each, with 1200 ms before each to let the eye arrive. These steps are
+what teach the tracker to allow for head movement and for where the camera is. A display that
+skips them still gets a working calibration, but one that drifts when the head moves. Trackers
+older than this field ignore it.
 
 `id` is any number the display chooses; the answer carries it back. Nine targets is the default
 pattern: the centre, the four corners and the four edge midpoints, each 8% in from the edge.

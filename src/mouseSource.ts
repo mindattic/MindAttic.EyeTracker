@@ -54,7 +54,7 @@ export class MouseGazeSource extends Emitter<{ gaze: GazeSample }> implements Ga
   }
 
   calibBegin(): void {}
-  calibCollect(_x: number, _y: number, ms: number): Promise<number> {
+  calibCollect(_x: number, _y: number, ms: number, _headMoving?: boolean): Promise<number> {
     return new Promise((resolve) => setTimeout(() => resolve(1), ms));
   }
   async calibFinish(): Promise<CalibrationResult> {

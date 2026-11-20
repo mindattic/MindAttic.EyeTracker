@@ -25,9 +25,9 @@ The part that is specific to a camera (the eyes, the model, the fit) stays with 
       |
       v
   extractFeatures (features.ts)    where each iris sits between its eye's corners, eyelids,
-      |                            head turn, tilt, roll, position, size
+      |                            where the head points, its distance and roll
       v
-  featureVector                    18 numbers, each scaled to about -1..1
+  featureVector                    21 numbers, each scaled to about -1..1
       |
       v
   GazeModel (model.ts)             two weight vectors: x = wx . features, y = wy . features
@@ -52,8 +52,7 @@ video frame.
 ### Features
 
 For each eye, take the two corners. The line between them is the eye's own x axis and its length is
-the unit, so the numbers do not change when the face moves in the image, comes closer or rolls.
-Then:
+the unit, so the numbers do not change when the face moves in the image or comes closer. Then:
 
 - **Iris x**: how far the iris centre is along that line from its midpoint. This is the balance of
   eye-white on either side of the iris, and it is the main signal for looking left and right.
@@ -62,31 +61,88 @@ Then:
 - **Upper lid**: the eyelid rides up and down with vertical gaze, which helps where iris y is weak.
 - **Opening**: lid to lid. Used to detect blinks, not as a regression input.
 
-For the head: the nose tip's offset from the midpoint between the eyes (along the eye line for
-turn, across it for tilt), the slope of the eye line (roll), where the face is in the image, and
-the distance between the eyes (how close the face is).
+Those say how the eyes are turned **in the head**. Where the gaze lands also depends on where the
+head is and which way it faces, so the head is measured too:
 
-`featureVector` scales each of these by a fixed constant and adds a few second-order terms (iris x
-squared, iris x times head turn, and so on), giving 18 numbers. The scales are constants, not
-statistics of the calibration data. If they were statistics, a feature that happened not to move
-during calibration would be divided by nearly zero and explode the first time it moved afterward.
+- **Head point** (`hx`, `hy`): the spot, in centimetres on the plane the camera sits in, that a
+  line straight out of the face would hit. It comes from MediaPipe's head-pose matrix: the face's
+  position and its outward direction in camera space, followed to that plane. It moves when the
+  head turns and when the head shifts.
+- **Distance** (`dist`): camera to face, in centimetres.
+- **Roll**: the slope of the eye line.
+
+(When there is no matrix, the same three are estimated from the landmarks: distance from how far
+apart the eyes appear, direction from where the nose tip sits between them. That is cruder, and
+the simulations below show it.)
+
+### The geometry behind the model
+
+Looking at a screen works like this: the gaze point is where the head points, plus how far the
+eyes are turned in the head multiplied by the distance to the screen. `featureVector` is laid out
+to match:
+
+- the head point enters directly;
+- every eye term is multiplied by the distance;
+- eye offsets are measured along the eye line, which rolls with the head, so they are turned back
+  to the camera's axes first;
+- second- and third-order eye terms cover the fact that the eye turns through an angle (a wide
+  screen needs them), and head-times-eye terms cover the two acting together.
+
+That gives 21 numbers, each scaled by a fixed constant to about -1..1. The scales are constants,
+not statistics of the calibration data, so a feature that happened not to move during calibration
+cannot blow up when it moves later.
+
+### Where the camera is
+
+Nothing above assumes the camera is at the centre of the screen, or level, or in front of the face.
+The head point is measured on the camera's own plane, in the camera's own axes. Moving the camera
+to a corner of the monitor shifts every head point by a constant; tilting it scales and shears
+them. A constant and a linear map are exactly what the fit solves for: the bias absorbs the
+camera's offset from the screen, and the weights absorb its angle and the screen's size. They are
+found once at calibration and applied to every frame afterwards.
 
 ### Calibration
 
-During calibration the user looks at known points while the tracker records feature vectors.
+Calibration has two parts.
+
+1. **Dots.** The user looks at nine known points with the head still. This pins down the eye
+   terms.
+2. **Head movement.** The user keeps looking at one dot while turning, nodding and leaning (three
+   dots, about fifteen seconds). The gaze point does not change but every feature does. This is
+   what pins down the head terms: without it the fit has never seen the head move and can only
+   guess how to allow for it.
+
 `CalibrationSession.fit` then:
 
-1. Drops, for each target, the fifth of the samples farthest from that target's median. These are
-   the frames where the eye was still arriving or a blink had begun.
+1. For the dots, drops the fifth of each target's samples farthest from that target's median: the
+   frames where the eye was still arriving or a blink had begun. Head-movement samples are all
+   kept, since they differ on purpose.
 2. Fits two ridge regressions, one for x and one for y. The penalty is per feature: nearly nothing
-   on the iris terms, more on the head terms. If the head stayed still, the head terms have no
-   evidence and stay near zero. If it moved, they earn weight and compensate for it.
+   on the eye terms, a little more on the head terms, so that if the head-movement part was skipped
+   they stay small instead of fitting noise.
 3. Measures two errors. `fitError` is the error on the samples it trained on. `crossError` is
-   leave-one-target-out: fit on eight targets, predict the ninth, for each in turn. That is the
-   honest number, and the one shown to the user.
+   leave-one-target-out: fit without one target, predict it, for each in turn. It is the more
+   honest number and the one shown to the user. It is pessimistic for corner targets, which the
+   other targets do not surround.
 
-Nine targets is the default. Five is enough for a rough fit but gives a poor estimate of its own
-accuracy. Thirteen adds four inner points and helps on large screens.
+### What a simulation shows
+
+`src/testing/syntheticFace.ts` builds the scene from real geometry: a screen of a given size, a
+camera somewhere on its edge, a head at a given place and angle, and eyes that turn to look at a
+point; the landmarks are that scene through a pinhole camera, with jitter. Root-mean-square error
+as a percentage of the screen, 1% landmark jitter, horizontal / vertical:
+
+| Camera | Head still | Head moving, dots only | Head moving, with the head-movement step |
+| --- | --- | --- | --- |
+| Above the screen, centred | 1.1 / 2.1 | 6.6 / 10.7 | 1.9 / 3.1 |
+| Bottom-left corner, tilted up | 2.2 / 3.4 | 9.6 / 17.8 | 6.0 / 8.5 |
+| Off the right-hand side | 2.4 / 2.4 | 10.0 / 11.8 | 5.8 / 4.1 |
+| 120 cm ultrawide, camera a third of the way along | 1.8 / 4.0 | 6.4 / 10.3 | 4.6 / 7.6 |
+
+"Head moving" means anywhere within 7 cm sideways, 4 cm up or down, 10 cm nearer or farther, and
+turned up to 14 degrees. These are a model eye, not a person: real numbers will be worse, but the
+pattern holds. Camera placement costs little once calibrated; head movement costs a lot unless the
+calibration has seen it; and a camera far off to one side is harder than one near the middle.
 
 ### Before calibration
 

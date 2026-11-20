@@ -157,10 +157,10 @@ export class RemoteGazeSource extends Emitter<RemoteEvents> implements GazeSourc
     this.link.send({ type: 'calib', op: 'begin' });
   }
 
-  async calibCollect(x: number, y: number, ms: number): Promise<number> {
+  async calibCollect(x: number, y: number, ms: number, headMoving = false): Promise<number> {
     const id = this.nextId++;
     const target = this.space === 'viewport' ? viewportToScreen(x, y) : { x, y };
-    if (!this.link.send({ type: 'calib', op: 'collect', id, x: target.x, y: target.y, ms })) return 0;
+    if (!this.link.send({ type: 'calib', op: 'collect', id, x: target.x, y: target.y, ms, headMoving })) return 0;
     const reply = await this.request(id, ms + 3000);
     return reply?.type === 'calib.collected' ? reply.samples : 0;
   }
@@ -215,7 +215,7 @@ export function publishToBridge(source: GazeSource, url: string, options: Bridge
       if (m.op === 'begin') source.calibBegin();
       else if (m.op === 'clear') source.calibClear();
       else if (m.op === 'collect') {
-        const samples = await source.calibCollect(m.x, m.y, m.ms);
+        const samples = await source.calibCollect(m.x, m.y, m.ms, m.headMoving === true);
         link.send({ type: 'calib.collected', id: m.id, samples });
       } else if (m.op === 'finish') {
         const result = await source.calibFinish();

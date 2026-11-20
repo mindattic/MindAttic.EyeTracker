@@ -1,4 +1,4 @@
-import { FEATURE_COUNT, FEATURE_PENALTY } from './features.js';
+import { FEATURE_COUNT, FEATURE_PENALTY, FEATURE_VERSION } from './features.js';
 import { median, ridgeFit } from './math/ridge.js';
 import { predict, type GazeModel } from './model.js';
 import type { CalibrationResult, Point } from './types.js';
@@ -7,6 +7,8 @@ interface Target {
   x: number;
   y: number;
   rows: number[][];
+  /** The head was moving on purpose during this target, so its samples legitimately differ. */
+  headMoving: boolean;
 }
 
 /** A target needs at least this many samples to count. */
@@ -26,9 +28,14 @@ export class CalibrationSession {
     return this.current !== null;
   }
 
-  beginTarget(x: number, y: number): void {
+  /**
+   * Start collecting for a point the user is looking at. Pass `headMoving` for a step where they
+   * keep their eyes on the point while turning and moving their head: those samples show the fit
+   * how the features change when only the head moves, which is what lets it compensate later.
+   */
+  beginTarget(x: number, y: number, headMoving = false): void {
     this.endTarget();
-    this.current = { x, y, rows: [] };
+    this.current = { x, y, rows: [], headMoving };
   }
 
   /** Add one frame's feature vector to the target being collected. Ignored between targets. */
@@ -48,7 +55,7 @@ export class CalibrationSession {
   fit(): { model: GazeModel | null; result: CalibrationResult } {
     this.endTarget();
     const usable = this.targets
-      .map((t) => ({ x: t.x, y: t.y, rows: trimOutliers(t.rows) }))
+      .map((t) => ({ ...t, rows: t.headMoving ? t.rows : trimOutliers(t.rows) }))
       .filter((t) => t.rows.length >= MIN_SAMPLES_PER_TARGET);
     const samples = usable.reduce((n, t) => n + t.rows.length, 0);
     const fail = (reason: string) => ({
@@ -97,7 +104,7 @@ function fitTargets(targets: Target[]): GazeModel {
   }
   const penalty = [...FEATURE_PENALTY];
   return {
-    version: 1,
+    version: FEATURE_VERSION,
     features: FEATURE_COUNT,
     wx: ridgeFit(rows, xs, penalty),
     wy: ridgeFit(rows, ys, penalty),

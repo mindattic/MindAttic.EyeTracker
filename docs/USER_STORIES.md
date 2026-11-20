@@ -23,4 +23,5 @@ _Nothing recorded yet._
 |---|---|---|---|---|---|
 | ET-T1 | 2026-11-19 | docs | closed | Start the permanent ticket log in the ticket database | — |
 | ET-T2 | 2026-11-19 | feature | closed | Webcam gaze library: MediaPipe iris/eye-white landmarks, calibration, smoothing, three.js demo, tests, a bridge server and Unity/Unreal clients (MAT-T160) | 194454e |
-| ET-T3 | 2026-11-19 | fix | open | Calibration ran fullscreen (5120x1440) but play happens in a 1920x1080 window, so vertical gaze only covered half the window: calibrate in screen space and map gaze into the current viewport; games calibrate over the window they play in | — |
+| ET-T3 | 2026-11-19 | fix | closed | Calibration ran fullscreen (5120x1440) but play happens in a 1920x1080 window, so vertical gaze only covered half the window: calibrate in screen space and map gaze into the current viewport; games calibrate over the window they play in | dd6968a |
+| ET-T4 | 2026-11-19 | feature | open | Gaze model that does not assume the camera is at the screen centre: 3D head pose (position, distance, direction) projected to the screen plane, camera offset and angle learned as constants at calibration, and a head-movement calibration step so head motion is compensated in real time | — |

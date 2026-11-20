@@ -16,6 +16,11 @@ export interface LandmarkFrame {
   landmarks: ArrayLike<Landmark>;
   /** Camera image width / height, so distances can be measured in a square space. */
   aspect: number;
+  /**
+   * The pose of the head in camera space as a 4x4 matrix (the MediaPipe facial transformation
+   * matrix, in centimetres). Optional: without it the pose is estimated from the landmarks.
+   */
+  matrix?: ArrayLike<number> | null;
   /** Capture time in milliseconds (any monotonic clock). */
   t: number;
 }
@@ -62,8 +67,12 @@ export interface GazeSource {
   on(event: 'gaze', handler: (sample: GazeSample) => void): () => void;
   /** Start a new calibration, dropping samples collected so far. */
   calibBegin(): void;
-  /** Collect samples for `ms` milliseconds while the user looks at (x, y). Resolves with the sample count. */
-  calibCollect(x: number, y: number, ms: number): Promise<number>;
+  /**
+   * Collect samples for `ms` milliseconds while the user looks at (x, y). Resolves with the sample
+   * count. `headMoving` marks a step where the user keeps looking at the point while moving their
+   * head, which is what teaches the model to allow for head movement.
+   */
+  calibCollect(x: number, y: number, ms: number, headMoving?: boolean): Promise<number>;
   /** Fit a model from the collected samples and start using it. */
   calibFinish(): Promise<CalibrationResult>;
   /** Forget the calibration and go back to the built-in mapping. */

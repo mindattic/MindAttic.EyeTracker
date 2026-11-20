@@ -90,6 +90,9 @@ export class CameraLandmarkSource {
         baseOptions: { modelAssetPath: o.modelUrl, delegate },
         runningMode: 'VIDEO',
         numFaces: 1,
+        // The position and direction of the head in camera space: what lets the gaze model allow
+        // for where the camera is and for head movement.
+        outputFacialTransformationMatrixes: true,
         minFaceDetectionConfidence: 0.5,
         minFacePresenceConfidence: 0.5,
         minTrackingConfidence: 0.5,
@@ -112,7 +115,14 @@ export class CameraLandmarkSource {
       try {
         const result = this.landmarker.detectForVideo(v, t);
         const face = result.faceLandmarks?.[0];
-        if (face) frame = { landmarks: face, aspect: v.videoWidth / v.videoHeight, t };
+        if (face) {
+          frame = {
+            landmarks: face,
+            aspect: v.videoWidth / v.videoHeight,
+            matrix: result.facialTransformationMatrixes?.[0]?.data ?? null,
+            t,
+          };
+        }
       } catch {
         // A dropped frame is not worth stopping for; the next one will be tried.
       }

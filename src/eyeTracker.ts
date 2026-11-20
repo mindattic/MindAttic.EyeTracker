@@ -44,7 +44,7 @@ export interface TrackerEvents extends Record<string, unknown> {
 }
 
 // v2: models are fitted in screen space. Older, viewport-space models are left behind.
-const STORAGE_PREFIX = 'mindattic.eyetracker.model.v2.';
+const STORAGE_PREFIX = 'mindattic.eyetracker.model.v3.';
 
 /**
  * Webcam gaze tracking in the browser: camera, MediaPipe face mesh, the gaze pipeline and
@@ -145,10 +145,10 @@ export class EyeTracker extends Emitter<TrackerEvents> implements GazeSource {
     this.session = new CalibrationSession();
   }
 
-  calibCollect(x: number, y: number, ms: number): Promise<number> {
+  calibCollect(x: number, y: number, ms: number, headMoving = false): Promise<number> {
     const session = (this.session ??= new CalibrationSession());
     const target = this.space === 'viewport' ? viewportToScreen(x, y) : { x, y };
-    session.beginTarget(target.x, target.y);
+    session.beginTarget(target.x, target.y, headMoving);
     return new Promise((resolve) => setTimeout(() => resolve(session.endTarget()), ms));
   }
 

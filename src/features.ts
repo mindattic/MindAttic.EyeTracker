@@ -21,6 +21,11 @@ export const LM = {
 /** The mesh must include the iris points (the last ten of 478). */
 export const LANDMARK_COUNT = 478;
 
+/** Typical adult distance between the pupils, in centimetres. Used to judge distance when there is no head-pose matrix. */
+export const IOD_CM = 6.3;
+/** A typical webcam's vertical field of view, in radians. Used only when there is no head-pose matrix. */
+export const CAMERA_FOV_V = (40 * Math.PI) / 180;
+
 /** Where the iris sits inside one eye opening, in units of that eye's corner-to-corner width. */
 export interface EyeFeatures {
   /**
@@ -39,6 +44,15 @@ export interface EyeFeatures {
 export interface FaceFeatures {
   right: EyeFeatures;
   left: EyeFeatures;
+  /**
+   * Where the head is pointing: the spot, in centimetres on the camera's own plane, that a line
+   * straight out of the face would hit. It moves when the head turns and when the head moves.
+   * With the eyes still in the head, the gaze point moves with it.
+   */
+  hx: number;
+  hy: number;
+  /** Distance from the camera to the face, in centimetres. */
+  dist: number;
   /** Head turn left/right: nose offset along the eye line, in eye-distance units. */
   yaw: number;
   /** Head tilt up/down: nose offset below the eye line, in eye-distance units. */
@@ -97,6 +111,50 @@ function eye(
   };
 }
 
+/**
+ * The head's position and direction as "where it points on the camera's plane".
+ *
+ * With MediaPipe's head-pose matrix this is exact geometry: the face's position t and its outward
+ * direction f in camera space, followed to the plane the camera sits in. Without the matrix (a
+ * synthetic face, an older model) the same quantities are estimated from the landmarks: distance
+ * from how far apart the eyes appear, direction from where the nose tip sits between them.
+ */
+function headPoint(
+  frame: LandmarkFrame,
+  centre: V2,
+  iod: number,
+  yaw: number,
+  pitch: number,
+  aspect: number,
+): { hx: number; hy: number; dist: number } {
+  const m = frame.matrix;
+  if (m && m.length >= 16) {
+    // The matrix may arrive column-major or row-major; the translation is the part with the big
+    // numbers (tens of centimetres), which tells them apart.
+    const columnMajor = Math.abs(m[14]) >= Math.abs(m[11]);
+    const tx = columnMajor ? m[12] : m[3];
+    const ty = columnMajor ? m[13] : m[7];
+    const tz = columnMajor ? m[14] : m[11];
+    const fx = columnMajor ? m[8] : m[2];
+    const fy = columnMajor ? m[9] : m[6];
+    let fz = columnMajor ? m[10] : m[10];
+    if (Number.isFinite(tx + ty + tz + fx + fy + fz) && Math.abs(tz) > 1) {
+      // A face turned nearly side-on would send the point to infinity; hold the slope finite.
+      if (Math.abs(fz) < 0.25) fz = fz < 0 ? -0.25 : 0.25;
+      return { hx: tx - (tz * fx) / fz, hy: ty - (tz * fy) / fz, dist: Math.abs(tz) };
+    }
+  }
+  const span = 2 * Math.tan(CAMERA_FOV_V / 2);
+  const dist = IOD_CM / (iod * span);
+  const tx = (centre.x - aspect / 2) * span * dist;
+  const ty = (centre.y - 0.5) * span * dist;
+  // The nose tip stands about 3 cm proud of the eye line and 3.5 cm below it, so its offset
+  // between the eyes gives the tangent of the head's turn and tilt.
+  const tanYaw = yaw * 2.1;
+  const tanPitch = (pitch - 0.556) * 2.1;
+  return { hx: tx + dist * tanYaw, hy: ty + dist * tanPitch, dist };
+}
+
 /** Reduce a face mesh to the handful of numbers gaze depends on. Returns null if the mesh has no iris points. */
 export function extractFeatures(frame: LandmarkFrame): FaceFeatures | null {
   const lm = frame.landmarks;
@@ -114,11 +172,17 @@ export function extractFeatures(frame: LandmarkFrame): FaceFeatures | null {
   const ay = { x: -ax.y, y: ax.x };
   const c = { x: (l.mid.x + r.mid.x) / 2, y: (l.mid.y + r.mid.y) / 2 };
   const nose = { x: lm[LM.noseTip].x * aspect, y: lm[LM.noseTip].y };
+  const yaw = ((nose.x - c.x) * ax.x + (nose.y - c.y) * ax.y) / iod;
+  const pitch = ((nose.x - c.x) * ay.x + (nose.y - c.y) * ay.y) / iod;
+  const head = headPoint(frame, c, iod, yaw, pitch, aspect);
   return {
     right: r.features,
     left: l.features,
-    yaw: ((nose.x - c.x) * ax.x + (nose.y - c.y) * ax.y) / iod,
-    pitch: ((nose.x - c.x) * ay.x + (nose.y - c.y) * ay.y) / iod,
+    hx: head.hx,
+    hy: head.hy,
+    dist: head.dist,
+    yaw,
+    pitch,
     roll: Math.atan2(dy, dx),
     px: c.x / aspect - 0.5,
     py: c.y - 0.5,
@@ -127,54 +191,76 @@ export function extractFeatures(frame: LandmarkFrame): FaceFeatures | null {
 }
 
 /** Length of the vector `featureVector` returns. */
-export const FEATURE_COUNT = 18;
+export const FEATURE_COUNT = 21;
+/** Bumped whenever `featureVector` changes meaning, so stored models from an older layout are refused. */
+export const FEATURE_VERSION = 2;
 
 /**
- * Per-feature ridge penalty, matching `featureVector`. The bias is free, the iris terms nearly
- * free, and the head terms are held back so they only earn weight when the calibration data
- * actually shows the head moving.
+ * Per-feature ridge penalty, matching `featureVector`. The bias and the eye terms are nearly free.
+ * The head terms are held back a little, so they earn their weight from the head-movement part of
+ * the calibration and stay small if that part was skipped.
  */
 export const FEATURE_PENALTY: readonly number[] = [
-  0, // bias
-  1e-4, 1e-4, 1e-4, 1e-4, // iris x/y, both eyes
+  0, // bias: this is where a camera that is off to one side is absorbed
+  3e-4, 3e-4, // where the head points
+  1e-4, 1e-4, 1e-4, 1e-4, // eye rotation, both eyes
   1e-3, 1e-3, // eyelids
-  3e-3, 3e-3, 3e-3, 3e-3, 3e-3, 3e-3, // head yaw, pitch, roll, position, scale
-  1e-3, 1e-3, 1e-3, 1e-3, 1e-3, // second-order terms
+  3e-3, // distance
+  1e-3, 1e-3, 1e-3, // eye rotation, second order
+  3e-3, 3e-3, // head and eye together
+  3e-3, 3e-3, // head, second order
+  3e-3, // roll
+  1e-3, 1e-3, 1e-3, // eye rotation, third order: wide screens, where the eyes turn a long way
 ];
 
 /**
- * The regression input. Every term is scaled so its usual range is about -1..1; the scales are
- * fixed constants, not statistics of the calibration data, so a feature that happened to stay
- * still during calibration cannot blow up later.
+ * The regression input, laid out after the geometry of looking at a screen.
+ *
+ * The gaze point is roughly: where the head points, plus how far the eyes are turned in the head
+ * times the distance to the screen. So the head point enters directly, and every eye term is
+ * multiplied by the distance. Eye offsets are measured along the eye line, which rolls with the
+ * head, so they are turned back to the camera's own axes first. A camera that is not at the
+ * centre of the screen, or is tilted, changes only the constants the fit finds: the bias and the
+ * weights. Nothing here assumes where the camera is.
+ *
+ * Every term is scaled by a fixed constant so its usual range is about -1..1.
  */
 export function featureVector(f: FaceFeatures): number[] {
-  const rx = f.right.x * 8;
-  const ry = f.right.y * 8;
-  const lx = f.left.x * 8;
-  const ly = f.left.y * 8;
-  const yaw = f.yaw * 4;
-  const pitch = (f.pitch - 0.6) * 4;
+  const z = f.dist / 50;
+  const cos = Math.cos(f.roll);
+  const sin = Math.sin(f.roll);
+  const turn = (e: EyeFeatures): [number, number] => [
+    (e.x * cos - e.y * sin) * 8 * z,
+    (e.x * sin + e.y * cos) * 8 * z,
+  ];
+  const [rx, ry] = turn(f.right);
+  const [lx, ly] = turn(f.left);
+  const h1 = f.hx / 20;
+  const h2 = f.hy / 20;
   const mx = (rx + lx) / 2;
   const my = (ry + ly) / 2;
   return [
     1,
+    h1,
+    h2,
     rx,
     ry,
     lx,
     ly,
-    f.right.lid * 8,
-    f.left.lid * 8,
-    yaw,
-    pitch,
-    f.roll * 4,
-    f.px * 4,
-    f.py * 4,
-    (f.scale - 0.12) * 8,
+    f.right.lid * 8 * z,
+    f.left.lid * 8 * z,
+    z - 1,
     mx * mx,
     my * my,
     mx * my,
-    mx * yaw,
-    my * pitch,
+    h1 * mx,
+    h2 * my,
+    h1 * h1,
+    h2 * h2,
+    f.roll * 4,
+    mx * mx * mx,
+    my * my * my,
+    mx * my * my,
   ];
 }
 
