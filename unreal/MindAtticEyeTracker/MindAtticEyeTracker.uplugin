@@ -1,0 +1,23 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1.0",
+	"FriendlyName": "MindAttic Eye Tracker",
+	"Description": "Webcam gaze for Unreal games. Connects to the MindAttic.EyeTracker bridge as a display, receives the gaze point and drives calibration.",
+	"Category": "Input",
+	"CreatedBy": "MindAttic",
+	"CreatedByURL": "https://mindattic.com",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": false,
+	"IsBetaVersion": true,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "MindAtticEyeTracker",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}
