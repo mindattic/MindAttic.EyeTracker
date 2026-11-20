@@ -73,9 +73,18 @@ whole viewport and the point maps to the whole viewport.
 The game draws the targets, because only it knows its own screen. The tracker collects the eye
 samples, because only it has the camera.
 
-`UGazeCalibrator` runs the standard flow (nine targets, 700 ms for the eye to land, 900 ms of
-sampling each, then the fit). It draws nothing itself; the game's HUD reads the current target every
-frame.
+`UGazeCalibrator` runs the standard flow: nine targets (700 ms for the eye to land, 900 ms of
+sampling each), then three head-movement steps, then the fit. In a head-movement step the user
+keeps looking at one dot while moving their head: (0.5, 0.5) for 6 seconds, then (0.18, 0.22) and
+(0.82, 0.78) for 4 seconds each, with 1200 ms before each. These are sent as `collect` with
+`"headMoving": true` and teach the tracker to allow for head movement. Set `bHeadMovement` to false
+to skip them.
+
+It draws nothing itself; the game's HUD reads the current target every frame. During a
+head-movement step `IsHeadMovementStep()` is true: draw the dot in amber and show
+`GetInstruction()` ("Keep your eyes on the dot and slowly turn your head left and right, then nod
+up and down." and so on). `GetDotCount()` is the number of plain dots and `GetTargetCount()` the
+number of steps in all.
 
 ```cpp
 #include "GazeCalibrator.h"
@@ -106,8 +115,12 @@ units: 0.03 means about 3% of the screen.
 To run the steps yourself, the subsystem has `CalibBegin`, `CalibCollect(X, Y, Ms, OnCollected)`,
 `CalibFinish` and `CalibClear`. Each `collect` and `finish` carries an id and waits for the answer
 with that id: `Ms` plus 3 seconds for a collect (then it reports zero samples), 8 seconds for a
-finish (then it reports a failure). C++ callers can use `CalibCollectNative` and `CalibFinishNative`
-with lambdas.
+finish (then it reports a failure). `CalibCollect` takes an optional `bHeadMoving` for a
+head-movement step. C++ callers can use `CalibCollectNative` and `CalibFinishNative` with lambdas.
+
+`CalibHint(X, Y, Weight)` tells the tracker the user is looking at that point right now, for
+example because they just clicked it. The tracker adds it to its fit and keeps improving. It can be
+sent at any time after a calibration and has no answer.
 
 ## Files
 

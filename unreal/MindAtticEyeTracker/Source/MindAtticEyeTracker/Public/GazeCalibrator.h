@@ -28,7 +28,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FGazeCalibrationFinishedSignature, c
 /**
  * Runs the calibration flow against a UGazeTrackerSubsystem: nine targets by default (the centre,
  * the four corners and the four edge midpoints, each 8% in from the edge), 700 ms for the eye to
- * land on each, then 900 ms of sampling.
+ * land on each, then 900 ms of sampling. After the dots come three head-movement steps: the user
+ * keeps looking at a dot while moving their head, which is what teaches the tracker to allow for
+ * head movement and for where the camera is.
  *
  * It draws nothing. Whatever HUD the game has reads GetCurrentTarget and GetCollectProgress each
  * frame and draws the dot. The targets are normalized display points, so draw them over the same
@@ -72,8 +74,21 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Gaze|Calibration")
 	int32 GetTargetIndex() const { return TargetIndex; }
 
+	/** Every step: the dots and the head-movement steps. */
 	UFUNCTION(BlueprintPure, Category = "Gaze|Calibration")
 	int32 GetTargetCount() const { return Targets.Num(); }
+
+	/** How many of the steps are plain dots. They come first. */
+	UFUNCTION(BlueprintPure, Category = "Gaze|Calibration")
+	int32 GetDotCount() const { return DotCount; }
+
+	/** True while the current target is a head-movement step. Draw its dot in amber. */
+	UFUNCTION(BlueprintPure, Category = "Gaze|Calibration")
+	bool IsHeadMovementStep() const { return HasTarget() && StepHead.IsValidIndex(TargetIndex) && StepHead[TargetIndex]; }
+
+	/** What to tell the player about the current target. Show it beside the dot. */
+	UFUNCTION(BlueprintPure, Category = "Gaze|Calibration")
+	FString GetInstruction() const { return HasTarget() && StepText.IsValidIndex(TargetIndex) ? StepText[TargetIndex] : FString(); }
 
 	/** 0 while settling, rising to 1 over the sampling time. Use it to fill the dot. */
 	UFUNCTION(BlueprintPure, Category = "Gaze|Calibration")
@@ -107,6 +122,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gaze|Calibration")
 	double CollectSeconds = 0.9;
 
+	/** Run the head-movement steps after the dots. Without them the calibration drifts when the head moves. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gaze|Calibration")
+	bool bHeadMovement = true;
+
+	/** Time to let the eye land on a head-movement target. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gaze|Calibration")
+	double HeadSettleSeconds = 1.2;
+
 	// FTickableGameObject
 	virtual void Tick(float DeltaTime) override;
 	virtual TStatId GetStatId() const override;
@@ -126,6 +149,13 @@ private:
 
 	EGazeCalibrationState State = EGazeCalibrationState::Idle;
 	TArray<FVector2D> Targets;
+	// One entry per target, alongside Targets.
+	TArray<double> StepSettle;
+	TArray<double> StepCollect;
+	TArray<bool> StepHead;
+	TArray<FString> StepText;
+	int32 DotCount = 0;
+	void AddStep(const FVector2D& Point, double Settle, double Collect, bool bHead, const FString& Text);
 	int32 TargetIndex = 0;
 	double StateTime = 0.0;
 	double ResultShowSeconds = 0.0;

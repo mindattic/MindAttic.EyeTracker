@@ -92,10 +92,11 @@ public:
 	/**
 	 * Ask the tracker to sample the eyes for Ms milliseconds while the user looks at (X, Y), a
 	 * normalized display point. OnCollected fires with the number of samples taken, or with zero if
-	 * the tracker does not answer within Ms plus 3 seconds.
+	 * the tracker does not answer within Ms plus 3 seconds. Set bHeadMoving for a step where the
+	 * user keeps looking at the target while moving their head.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Gaze|Calibration")
-	void CalibCollect(double X, double Y, int32 Ms, FGazeCollectedDelegate OnCollected);
+	void CalibCollect(double X, double Y, int32 Ms, FGazeCollectedDelegate OnCollected, bool bHeadMoving = false);
 
 	/** Fit the calibration. The answer arrives on OnCalibrationResult (within 8 seconds). */
 	UFUNCTION(BlueprintCallable, Category = "Gaze|Calibration")
@@ -105,8 +106,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Gaze|Calibration")
 	void CalibClear();
 
-	/** CalibCollect for C++ callers. */
-	void CalibCollectNative(double X, double Y, int32 Ms, TFunction<void(int32 Samples)> OnCollected);
+	/**
+	 * Tell the tracker the user is looking at (X, Y) right now, for example because they just
+	 * clicked there. The tracker adds the point to its fit and keeps improving. It can be sent at
+	 * any time after a calibration and has no answer.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Gaze|Calibration")
+	void CalibHint(double X, double Y, double Weight = 1.0);
+
+	/**
+	 * CalibCollect for C++ callers. bHeadMoving marks a head-movement step: the user keeps looking
+	 * at the target while moving their head.
+	 */
+	void CalibCollectNative(double X, double Y, int32 Ms, TFunction<void(int32 Samples)> OnCollected, bool bHeadMoving = false);
 
 	/** CalibFinish for C++ callers. OnResult fires before OnCalibrationResult is broadcast. */
 	void CalibFinishNative(TFunction<void(const FGazeCalibrationResult& Result)> OnResult);

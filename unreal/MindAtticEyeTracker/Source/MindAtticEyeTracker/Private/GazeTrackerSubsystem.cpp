@@ -306,15 +306,26 @@ void UGazeTrackerSubsystem::CalibClear()
 	SendJson(Message);
 }
 
-void UGazeTrackerSubsystem::CalibCollect(double X, double Y, int32 Ms, FGazeCollectedDelegate OnCollected)
+void UGazeTrackerSubsystem::CalibHint(double X, double Y, double Weight)
+{
+	const TSharedRef<FJsonObject> Message = MakeShared<FJsonObject>();
+	Message->SetStringField(TEXT("type"), TEXT("calib"));
+	Message->SetStringField(TEXT("op"), TEXT("hint"));
+	Message->SetNumberField(TEXT("x"), X);
+	Message->SetNumberField(TEXT("y"), Y);
+	Message->SetNumberField(TEXT("weight"), Weight);
+	SendJson(Message);
+}
+
+void UGazeTrackerSubsystem::CalibCollect(double X, double Y, int32 Ms, FGazeCollectedDelegate OnCollected, bool bHeadMoving)
 {
 	CalibCollectNative(X, Y, Ms, [OnCollected](int32 Samples)
 	{
 		OnCollected.ExecuteIfBound(Samples);
-	});
+	}, bHeadMoving);
 }
 
-void UGazeTrackerSubsystem::CalibCollectNative(double X, double Y, int32 Ms, TFunction<void(int32 Samples)> OnCollected)
+void UGazeTrackerSubsystem::CalibCollectNative(double X, double Y, int32 Ms, TFunction<void(int32 Samples)> OnCollected, bool bHeadMoving)
 {
 	const int32 Id = NextRequestId++;
 	const TSharedRef<FJsonObject> Message = MakeShared<FJsonObject>();
@@ -324,6 +335,10 @@ void UGazeTrackerSubsystem::CalibCollectNative(double X, double Y, int32 Ms, TFu
 	Message->SetNumberField(TEXT("x"), X);
 	Message->SetNumberField(TEXT("y"), Y);
 	Message->SetNumberField(TEXT("ms"), Ms);
+	if (bHeadMoving)
+	{
+		Message->SetBoolField(TEXT("headMoving"), true);
+	}
 	if (!SendJson(Message))
 	{
 		if (OnCollected)

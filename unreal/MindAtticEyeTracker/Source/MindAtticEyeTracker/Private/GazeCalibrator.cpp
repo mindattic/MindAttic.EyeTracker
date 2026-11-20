@@ -53,10 +53,36 @@ bool UGazeCalibrator::Start(UGazeTrackerSubsystem* InTracker)
 		return false;
 	}
 
-	Targets = CustomTargets.Num() > 0 ? CustomTargets : MakePattern(PointCount);
+	Targets.Reset();
+	StepSettle.Reset();
+	StepCollect.Reset();
+	StepHead.Reset();
+	StepText.Reset();
+	const TArray<FVector2D> Dots = CustomTargets.Num() > 0 ? CustomTargets : MakePattern(PointCount);
+	for (const FVector2D& Dot : Dots)
+	{
+		AddStep(Dot, SettleSeconds, CollectSeconds, false, TEXT("Look at each dot until it fills. Keep your head still and move only your eyes."));
+	}
+	DotCount = Dots.Num();
+	if (bHeadMovement)
+	{
+		// Eyes fixed, head moving. The reference sequence from docs/PROTOCOL.md.
+		AddStep(FVector2D(0.5, 0.5), HeadSettleSeconds, 6.0, true, TEXT("Keep your eyes on the dot and slowly turn your head left and right, then nod up and down."));
+		AddStep(FVector2D(0.18, 0.22), HeadSettleSeconds, 4.0, true, TEXT("Eyes on the dot again. Lean a little closer, then back, then side to side."));
+		AddStep(FVector2D(0.82, 0.78), HeadSettleSeconds, 4.0, true, TEXT("Once more: eyes on the dot, move your head around gently."));
+	}
 	Tracker->CalibBegin();
 	BeginTarget(0);
 	return true;
+}
+
+void UGazeCalibrator::AddStep(const FVector2D& Point, double Settle, double Collect, bool bHead, const FString& Text)
+{
+	Targets.Add(Point);
+	StepSettle.Add(Settle);
+	StepCollect.Add(Collect);
+	StepHead.Add(bHead);
+	StepText.Add(Text);
 }
 
 void UGazeCalibrator::Cancel()
@@ -84,11 +110,11 @@ FVector2D UGazeCalibrator::GetCurrentTarget() const
 
 double UGazeCalibrator::GetCollectProgress() const
 {
-	if (State != EGazeCalibrationState::Collecting || CollectSeconds <= 0.0)
+	if (State != EGazeCalibrationState::Collecting || !StepCollect.IsValidIndex(TargetIndex) || StepCollect[TargetIndex] <= 0.0)
 	{
 		return 0.0;
 	}
-	return FMath::Clamp(StateTime / CollectSeconds, 0.0, 1.0);
+	return FMath::Clamp(StateTime / StepCollect[TargetIndex], 0.0, 1.0);
 }
 
 void UGazeCalibrator::BeginTarget(int32 Index)
@@ -107,7 +133,9 @@ void UGazeCalibrator::BeginCollect()
 	const int32 ThisRun = RunId;
 	const int32 ThisTarget = TargetIndex;
 	TWeakObjectPtr<UGazeCalibrator> WeakThis(this);
-	Tracker->CalibCollectNative(Target.X, Target.Y, FMath::RoundToInt32(CollectSeconds * 1000.0),
+	const double CollectFor = StepCollect.IsValidIndex(TargetIndex) ? StepCollect[TargetIndex] : CollectSeconds;
+	const bool bHead = StepHead.IsValidIndex(TargetIndex) && StepHead[TargetIndex];
+	Tracker->CalibCollectNative(Target.X, Target.Y, FMath::RoundToInt32(CollectFor * 1000.0),
 		[WeakThis, ThisRun, ThisTarget](int32 /*Samples*/)
 		{
 			UGazeCalibrator* Self = WeakThis.Get();
@@ -125,7 +153,7 @@ void UGazeCalibrator::BeginCollect()
 			{
 				Self->BeginFit();
 			}
-		});
+		}, bHead);
 }
 
 void UGazeCalibrator::BeginFit()
@@ -176,7 +204,7 @@ void UGazeCalibrator::Tick(float DeltaTime)
 			Lost.Reason = TEXT("the connection to the bridge was lost");
 			Finish(Lost);
 		}
-		else if (StateTime >= SettleSeconds)
+		else if (StateTime >= (StepSettle.IsValidIndex(TargetIndex) ? StepSettle[TargetIndex] : SettleSeconds))
 		{
 			BeginCollect();
 		}
