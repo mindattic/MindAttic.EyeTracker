@@ -11,7 +11,7 @@ export interface OneEuroOptions {
   dCutoff: number;
 }
 
-export const DEFAULT_ONE_EURO: OneEuroOptions = { minCutoff: 0.9, beta: 2.0, dCutoff: 1.0 };
+export const DEFAULT_ONE_EURO: OneEuroOptions = { minCutoff: 1.2, beta: 0.6, dCutoff: 1.0 };
 
 export class OneEuroFilter {
   private x: number | null = null;

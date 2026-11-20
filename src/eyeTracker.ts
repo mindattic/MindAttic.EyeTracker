@@ -2,7 +2,8 @@ import { CalibrationSession } from './calibration.js';
 import { CameraLandmarkSource, type CameraOptions } from './camera.js';
 import { Emitter } from './emitter.js';
 import type { FaceFeatures } from './features.js';
-import { isValidModel, type GazeModel } from './model.js';
+import { addSample, isValidStats, solveStats } from './learning.js';
+import { isValidModel, predict, type GazeModel } from './model.js';
 import { DEFAULT_PIPELINE, GazePipeline, type PipelineOptions } from './pipeline.js';
 import { screenToViewport, viewportOnScreen, viewportToScreen } from './screenSpace.js';
 import type { CalibrationResult, GazeSample, GazeSource, LandmarkFrame } from './types.js';
@@ -34,6 +35,11 @@ export interface EyeTrackerOptions {
    * covered. Use it when this page is only the camera and a display elsewhere draws the targets.
    */
   space?: 'viewport' | 'display';
+  /**
+   * Keep learning after calibration from mouse clicks and taps: people look at what they click, so
+   * each click is a free calibration point. On by default in "viewport" space.
+   */
+  learnFromClicks?: boolean;
 }
 
 export interface TrackerEvents extends Record<string, unknown> {
@@ -64,6 +70,12 @@ export class EyeTracker extends Emitter<TrackerEvents> implements GazeSource {
   private session: CalibrationSession | null = null;
   private readonly storageKey: string | null;
   private readonly space: 'viewport' | 'display';
+  private pendingHint: { x: number; y: number; weight: number; frames: number } | null = null;
+  private unsolved = 0;
+  private readonly onClick = (ev: PointerEvent) => {
+    if (this.session || this.status.state !== 'running') return;
+    this.hint(ev.clientX / Math.max(1, window.innerWidth), ev.clientY / Math.max(1, window.innerHeight));
+  };
   private frames = 0;
   private fpsSince = 0;
 
@@ -74,6 +86,9 @@ export class EyeTracker extends Emitter<TrackerEvents> implements GazeSource {
     this.storageKey = options.storageKey === undefined ? 'default' : options.storageKey;
     this.space = options.space ?? 'viewport';
     this.loadCalibration();
+    if ((options.learnFromClicks ?? this.space === 'viewport') && typeof window !== 'undefined') {
+      window.addEventListener('pointerdown', this.onClick, true);
+    }
   }
 
   get video(): HTMLVideoElement | null {
@@ -111,6 +126,7 @@ export class EyeTracker extends Emitter<TrackerEvents> implements GazeSource {
     if (this.session?.collecting && this.pipeline.lastVector && !this.pipeline.lastBlink) {
       this.session.add(this.pipeline.lastVector);
     }
+    this.learn();
     this.latest = sample;
     this.frames++;
     if (t - this.fpsSince >= 1000) {
@@ -137,6 +153,49 @@ export class EyeTracker extends Emitter<TrackerEvents> implements GazeSource {
   private setStatus(patch: Partial<TrackerStatus>): void {
     this.status = { ...this.status, ...patch, calibrated: this.calibrated };
     this.emit('status', this.status);
+  }
+
+  // ---- learning in use ----
+
+  /**
+   * The user is looking at (x, y) now. The next few frames are added to the fit as extra
+   * calibration samples, at a fraction of the weight of a real calibration sample.
+   */
+  hint(x: number, y: number, weight = 0.5): void {
+    if (!this.pipeline.model?.stats || this.session) return;
+    const target = this.space === 'viewport' ? viewportToScreen(x, y) : { x, y };
+    this.pendingHint = { x: target.x, y: target.y, weight, frames: 4 };
+  }
+
+  /** How many samples have been learned since the calibration. */
+  get learned(): number {
+    return this.pipeline.model?.learned ?? 0;
+  }
+
+  private learn(): void {
+    const hint = this.pendingHint;
+    const model = this.pipeline.model;
+    const phi = this.pipeline.lastVector;
+    if (!hint || !model?.stats) return;
+    if (!phi || this.pipeline.lastBlink) return;
+    hint.frames--;
+    if (hint.frames <= 0) this.pendingHint = null;
+    // A hint is a guess about where the user is looking. If the current estimate is nowhere near
+    // it, the guess is probably wrong (they clicked without looking), so it is not learned.
+    const now = predict(model, phi);
+    if (Math.hypot(now.x - hint.x, now.y - hint.y) > 0.3) return;
+    addSample(model.stats, phi, hint.x, hint.y, hint.weight);
+    model.learned = (model.learned ?? 0) + 1;
+    this.unsolved++;
+    if (this.unsolved >= 4) {
+      this.unsolved = 0;
+      const solved = solveStats(model.stats);
+      if (solved.wx.every(Number.isFinite) && solved.wy.every(Number.isFinite)) {
+        model.wx = solved.wx;
+        model.wy = solved.wy;
+        this.saveCalibration();
+      }
+    }
   }
 
   // ---- calibration (GazeSource) ----
@@ -190,7 +249,10 @@ export class EyeTracker extends Emitter<TrackerEvents> implements GazeSource {
     try {
       const text = localStorage.getItem(STORAGE_PREFIX + this.storageKey);
       const model: unknown = text ? JSON.parse(text) : null;
-      if (isValidModel(model)) this.pipeline.model = model;
+      if (isValidModel(model)) {
+        if (model.stats && !isValidStats(model.stats)) delete model.stats;
+        this.pipeline.model = model;
+      }
     } catch {
       // A missing or unreadable calibration just means calibrating again.
     }

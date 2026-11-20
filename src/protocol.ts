@@ -46,7 +46,8 @@ export type CalibMessage =
   | { type: 'calib'; op: 'begin' }
   | { type: 'calib'; op: 'collect'; id: number; x: number; y: number; ms: number; headMoving?: boolean }
   | { type: 'calib'; op: 'finish'; id: number }
-  | { type: 'calib'; op: 'clear' };
+  | { type: 'calib'; op: 'clear' }
+  | { type: 'calib'; op: 'hint'; x: number; y: number; weight?: number };
 
 /** Tracker to displays: a `collect` finished. */
 export interface CalibCollectedMessage {

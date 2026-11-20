@@ -178,6 +178,11 @@ export class RemoteGazeSource extends Emitter<RemoteEvents> implements GazeSourc
     this.link.send({ type: 'calib', op: 'clear' });
   }
 
+  hint(x: number, y: number, weight = 0.5): void {
+    const target = this.space === 'viewport' ? viewportToScreen(x, y) : { x, y };
+    this.link.send({ type: 'calib', op: 'hint', x: target.x, y: target.y, weight });
+  }
+
   close(): void {
     this.link.close();
   }
@@ -214,6 +219,7 @@ export function publishToBridge(source: GazeSource, url: string, options: Bridge
     } else if (m.type === 'calib') {
       if (m.op === 'begin') source.calibBegin();
       else if (m.op === 'clear') source.calibClear();
+      else if (m.op === 'hint') source.hint?.(m.x, m.y, m.weight);
       else if (m.op === 'collect') {
         const samples = await source.calibCollect(m.x, m.y, m.ms, m.headMoving === true);
         link.send({ type: 'calib.collected', id: m.id, samples });

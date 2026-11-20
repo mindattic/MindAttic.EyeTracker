@@ -156,12 +156,50 @@ The pipeline tracks the widest recent eye opening. When the opening drops below 
 frame is a blink: the gaze point is held and `confidence` is zero. With no face in the frame, the
 same. Consumers should treat zero confidence as "no new information".
 
-### Smoothing
+### Steadying
 
-Raw estimates jitter by a few percent of the screen from frame to frame. The One Euro filter
-smooths hard when the estimate is still and lightly when it moves fast, so fixations are steady and
-saccades are not dragged. `rawX` and `rawY` carry the unsmoothed estimate for anyone who wants to
-filter differently.
+Each estimate carries random error, so a fixed gaze shows up as a cloud of points around the true
+spot. Two stages deal with it.
+
+**Fixation averaging** (`filters/fixation.ts`). The centre of the cloud is a far better answer
+than any point in it. While the eyes rest on one spot the filter reports the running average of
+the estimates (up to a second's worth), which settles on the centre and gets steadier the longer
+the look lasts. To tell a real eye movement from the cloud's own scatter it compares the average
+of the last four estimates with the long average: when those four agree that the gaze is somewhere
+else, the long average is dropped and restarted there. One stray estimate is ignored.
+
+**One Euro filter** (`filters/oneEuro.ts`) then smooths what is left, lightly when the point is
+moving and harder when it is still.
+
+In simulation, at typical webcam noise, a steady look jitters by 2% of the screen raw, 0.7% with
+the One Euro filter alone and 0.14% with both. A jump to a new spot is followed in five or six
+frames (about a fifth of a second). The cost is that a slowly moving gaze, such as eyes following
+a moving object, trails by a few percent of the screen. `rawX` and `rawY` carry the unsmoothed
+estimate for anyone who wants to filter differently, and `fixation: null` in the pipeline options
+turns the averaging off.
+
+### Learning in use
+
+A calibration is fifteen to thirty seconds of data. The tracker can keep adding to it.
+
+The model is solved from sums over its samples (`learning.ts`), and the sums are stored with the
+model. So a new sample, "the user was looking at this point when the features were these", can be
+added at any time and the model solved again in well under a millisecond. Where do such samples
+come from after calibration?
+
+- **Clicks and taps.** People look at what they click. `EyeTracker` listens for pointer presses
+  and treats each as a calibration point (`learnFromClicks`, on by default).
+- **Hints from the app.** `tracker.hint(x, y)` says "the user is looking here now". An app calls it
+  when it has good reason to know: a prompt the user must read, a target they must acquire.
+
+Each is added at half the weight of a calibration sample, and only if the current estimate is
+within 30% of the screen of it, so a click made without looking does not teach the model
+something false. The updated model is saved, so the learning carries over to the next visit. In
+simulation, a calibration that was 11% off improved to 6% after thirty clicks and 4% after three
+hundred.
+
+What it cannot do is learn from nothing. Without clicks or hints there is no ground truth, and
+averaging the gaze over time would only reinforce whatever error is already there.
 
 ## Display space
 

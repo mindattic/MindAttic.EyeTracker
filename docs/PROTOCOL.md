@@ -86,6 +86,9 @@ samples, because only it has the camera.
    or `"ok": false` with a `reason`. `crossError` is the expected error on points the fit was not
    trained on, in display units (0.03 means about 3% of the screen).
 4. `{ "type": "calib", "op": "clear" }` drops the calibration.
+5. `{ "type": "calib", "op": "hint", "x": 0.4, "y": 0.6, "weight": 0.5 }` can be sent at any time
+   after a calibration: the user is looking at this point now (they just clicked it, for example).
+   The tracker adds it to its fit and keeps improving. `weight` is optional. There is no answer.
 
 After the dots, a display should run **head-movement steps**: show a target, ask the user to keep
 their eyes on it while they slowly turn, nod and lean, and send `collect` with `headMoving: true`

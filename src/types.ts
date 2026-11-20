@@ -77,4 +77,10 @@ export interface GazeSource {
   calibFinish(): Promise<CalibrationResult>;
   /** Forget the calibration and go back to the built-in mapping. */
   calibClear(): void;
+  /**
+   * Tell the tracker where the user is looking right now, when the app has good reason to know
+   * (they just clicked there, they are reading a prompt there). The tracker adds it to what it
+   * learned at calibration, so it keeps getting more accurate in use. Optional to implement.
+   */
+  hint?(x: number, y: number, weight?: number): void;
 }

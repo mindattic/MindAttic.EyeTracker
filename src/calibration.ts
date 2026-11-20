@@ -1,4 +1,5 @@
 import { FEATURE_COUNT, FEATURE_PENALTY, FEATURE_VERSION } from './features.js';
+import { addSample, emptyStats } from './learning.js';
 import { median, ridgeFit } from './math/ridge.js';
 import { predict, type GazeModel } from './model.js';
 import type { CalibrationResult, Point } from './types.js';
@@ -86,7 +87,10 @@ export class CalibrationSession {
     const crossError = Math.sqrt(crossSq / usable.length);
     if (!Number.isFinite(fitError) || !Number.isFinite(crossError)) return fail('the fit did not converge');
 
-    const model: GazeModel = { ...weights, createdAt: Date.now(), crossError };
+    // Keep the sums the fit was solved from, so learning can carry on from here.
+    const stats = emptyStats();
+    for (const t of usable) for (const row of t.rows) addSample(stats, row, t.x, t.y);
+    const model: GazeModel = { ...weights, createdAt: Date.now(), crossError, stats, learned: 0 };
     return { model, result: { ok: true, targets: usable.length, samples, fitError, crossError } };
   }
 }

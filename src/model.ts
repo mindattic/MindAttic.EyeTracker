@@ -1,4 +1,5 @@
 import { FEATURE_COUNT, FEATURE_VERSION } from './features.js';
+import type { FitStats } from './learning.js';
 import { dot } from './math/ridge.js';
 import type { Point } from './types.js';
 
@@ -13,6 +14,10 @@ export interface GazeModel {
   /** Leave-one-target-out error at fit time, in display units. Zero for the built-in model. */
   crossError: number;
   builtIn?: boolean;
+  /** The sums this model was solved from. With them the tracker can go on learning (learning.ts). */
+  stats?: FitStats;
+  /** How many samples have been learned since the calibration. */
+  learned?: number;
 }
 
 export function predict(model: GazeModel, phi: ArrayLike<number>): Point {

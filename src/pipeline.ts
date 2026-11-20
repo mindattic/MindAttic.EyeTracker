@@ -1,4 +1,5 @@
 import { extractFeatures, eyeOpenness, featureVector, type FaceFeatures } from './features.js';
+import { DEFAULT_FIXATION, FixationFilter, type FixationOptions } from './filters/fixation.js';
 import { DEFAULT_ONE_EURO, OneEuroFilter, type OneEuroOptions } from './filters/oneEuro.js';
 import { builtInModel, predict, type GazeModel } from './model.js';
 import type { GazeSample, LandmarkFrame } from './types.js';
@@ -6,11 +7,13 @@ import type { GazeSample, LandmarkFrame } from './types.js';
 export interface PipelineOptions {
   /** Smoothing. See filters/oneEuro.ts. */
   filter: OneEuroOptions;
+  /** Averaging of a steady look, which is what removes the jitter. See filters/fixation.ts. Null turns it off. */
+  fixation: FixationOptions | null;
   /** The eyes count as closed when their opening falls below this fraction of the recent maximum. */
   blinkRatio: number;
 }
 
-export const DEFAULT_PIPELINE: PipelineOptions = { filter: DEFAULT_ONE_EURO, blinkRatio: 0.45 };
+export const DEFAULT_PIPELINE: PipelineOptions = { filter: DEFAULT_ONE_EURO, fixation: DEFAULT_FIXATION, blinkRatio: 0.45 };
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
@@ -29,17 +32,23 @@ export class GazePipeline {
   private readonly fallback = builtInModel();
   private readonly fx: OneEuroFilter;
   private readonly fy: OneEuroFilter;
+  private readonly fixation: FixationFilter | null;
+  /** True while the eyes are resting on one spot. */
+  fixating = false;
   private openBaseline = 0;
   private last: GazeSample | null = null;
 
   constructor(public readonly options: PipelineOptions = DEFAULT_PIPELINE) {
     this.fx = new OneEuroFilter(options.filter);
     this.fy = new OneEuroFilter(options.filter);
+    this.fixation = options.fixation ? new FixationFilter(options.fixation) : null;
   }
 
   reset(): void {
     this.fx.reset();
     this.fy.reset();
+    this.fixation?.reset();
+    this.fixating = false;
     this.openBaseline = 0;
     this.last = null;
   }
@@ -79,10 +88,13 @@ export class GazePipeline {
     const phi = featureVector(features);
     this.lastVector = phi;
     const raw = predict(this.model ?? this.fallback, phi);
+    // First centre on the average of a steady look, then smooth what is left.
+    const steady = this.fixation ? this.fixation.filter(raw.x, raw.y) : raw;
+    this.fixating = this.fixation?.fixating ?? false;
     const sample: GazeSample = {
       t,
-      x: clamp01(this.fx.filter(raw.x, t)),
-      y: clamp01(this.fy.filter(raw.y, t)),
+      x: clamp01(this.fx.filter(steady.x, t)),
+      y: clamp01(this.fy.filter(steady.y, t)),
       rawX: raw.x,
       rawY: raw.y,
       confidence: confidenceOf(features),

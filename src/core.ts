@@ -9,6 +9,8 @@ export * from './pipeline.js';
 export * from './protocol.js';
 export * from './emitter.js';
 export * from './filters/oneEuro.js';
+export * from './filters/fixation.js';
+export * from './learning.js';
 export * from './math/ridge.js';
 export * from './remote.js';
 export * from './testing/syntheticFace.js';
