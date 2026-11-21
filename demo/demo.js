@@ -2,7 +2,7 @@
 // It is both the library's demo and its manual test: every public piece is exercised here
 // (local camera, remote tracker through the bridge, mouse stand-in, calibration UI, gaze events).
 import * as THREE from '/vendor/three/three.module.js';
-import { WebcamCore, PresenceMonitor, HeadPoseMonitor, syntheticFace, EyeTracker, MouseGazeSource, RemoteGazeSource, runCalibration, LM } from '/dist/webcam.browser.js';
+import { WebcamCore, IntegrityMonitor, toHubEvent, syntheticFace, EyeTracker, MouseGazeSource, RemoteGazeSource, runCalibration, LM } from '/dist/webcam.browser.js';
 
 const $ = (id) => document.getElementById(id);
 const config = await fetch('/config.json').then((r) => r.json()).catch(() => ({}));
@@ -286,7 +286,8 @@ function logEvent(e) {
   li.children[3].textContent = e.summary;
   eventLog.prepend(li);
   while (eventLog.children.length > 30) eventLog.lastChild.remove();
-  console.log('webcam-event', JSON.stringify(e));
+  // The same event in the shape Gadfly's SessionHub.Integrity takes.
+  console.log('webcam-event', JSON.stringify(toHubEvent(e)));
 }
 
 function logBegin(b) {
@@ -300,9 +301,11 @@ function logBegin(b) {
 function startModules(core) {
   offModules();
   $('modules').hidden = false;
-  const presence = new PresenceMonitor();
-  presence.on('event', logEvent);
-  presence.on('begin', logBegin);
+  // One merged stream: presence, gaze region and the reading-pattern detector. Frames never leave the page.
+  const integrity = new IntegrityMonitor({ includeQuality: true });
+  const { presence, headpose: pose } = integrity;
+  integrity.on('event', logEvent);
+  integrity.on('begin', logBegin);
   presence.on('status', (s) => {
     set('m-faces', String(s.faces), s.faces === 1 ? 'ok' : 'warn');
     set('m-presence', s.absent ? 'absent' : s.multiple ? 'more than one face' : 'present', s.absent || s.multiple ? 'bad' : 'ok');
@@ -310,9 +313,6 @@ function startModules(core) {
     set('m-setup', s.warnings.length ? s.warnings.join(', ') : 'good', s.warnings.length ? 'warn' : 'ok');
   });
   // Head pose and gaze region: no calibration; the first second and a half is taken as "looking at the screen".
-  const pose = new HeadPoseMonitor();
-  pose.on('event', logEvent);
-  pose.on('begin', logBegin);
   pose.on('sample', (s) => {
     const names = { 'on-screen': 'on screen', left: 'off screen, left', right: 'off screen, right', up: 'off screen, up', down: 'off screen, down' };
     set('m-region', s.ready ? names[s.region] : 'learning baseline...', s.region === 'on-screen' ? 'ok' : 'warn');
@@ -320,16 +320,9 @@ function startModules(core) {
     set('m-angles', s.ready ? `${s.yawDeg.toFixed(0)} deg yaw, ${s.pitchDeg.toFixed(0)} deg pitch` : '-');
   });
   $('m-rebase').onclick = () => pose.recalibrate();
-  const offP = presence.connect(core);
-  const offH = pose.connect(core);
-  const off = () => {
-    offP();
-    offH();
-  };
+  const off = integrity.connect(core);
   offModules = () => {
     off();
-    presence.flush();
-    pose.flush();
     $('modules').hidden = true;
   };
 }

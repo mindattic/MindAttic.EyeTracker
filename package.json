@@ -12,6 +12,7 @@
     "./webcam": { "types": "./dist/webcam.d.ts", "import": "./dist/webcam.js" },
     "./presence": { "types": "./dist/presence.d.ts", "import": "./dist/presence.js" },
     "./headpose": { "types": "./dist/headpose.d.ts", "import": "./dist/headpose.js" },
+    "./integrity": { "types": "./dist/integrity.d.ts", "import": "./dist/integrity.js" },
     "./eyetracking": { "types": "./dist/eyetracking.d.ts", "import": "./dist/eyetracking.js" }
   },
   "files": ["dist", "compat", "bridge", "demo", "tracker", "tools", "docs"],

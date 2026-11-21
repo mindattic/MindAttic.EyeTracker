@@ -17,3 +17,5 @@ export * from './testing/syntheticFace.js';
 export * from './events.js';
 export * from './presence.js';
 export * from './headpose.js';
+export * from './reading.js';
+export * from './integrity.js';
