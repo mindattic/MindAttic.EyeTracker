@@ -16,3 +16,4 @@ export * from './remote.js';
 export * from './testing/syntheticFace.js';
 export * from './events.js';
 export * from './presence.js';
+export * from './headpose.js';

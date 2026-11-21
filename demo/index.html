@@ -45,6 +45,7 @@
     <button id="check" class="quiet" disabled>Check accuracy</button>
   </div>
   <button id="mouse" class="quiet">Simulate with the mouse</button>
+  <button id="synth" class="quiet" title="Run the modules on a scripted synthetic face: no camera, no face model">Run modules on a synthetic face</button>
   <button id="report-copy" class="quiet" disabled title="Copy the numbers from the last calibration and accuracy check">Copy report</button>
   <div class="preview" id="preview" hidden><video id="video" playsinline muted></video><canvas id="overlay"></canvas></div>
   <dl>
@@ -67,7 +68,11 @@
     <dt>Presence</dt><dd id="m-presence">-</dd>
     <dt>Identity</dt><dd id="m-identity">-</dd>
     <dt>Setup</dt><dd id="m-setup">-</dd>
+    <dt>Looking</dt><dd id="m-region">-</dd>
+    <dt>Dwell</dt><dd id="m-dwell">-</dd>
+    <dt>Angles</dt><dd id="m-angles">-</dd>
   </dl>
+  <button id="m-rebase" class="quiet" title="Look at the middle of the screen, then press: re-learns where 'on-screen' is">Look here = on-screen</button>
   <h1>Events</h1>
   <ol id="events"></ol>
 </section>

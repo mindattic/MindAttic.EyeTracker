@@ -2,7 +2,7 @@
 // It is both the library's demo and its manual test: every public piece is exercised here
 // (local camera, remote tracker through the bridge, mouse stand-in, calibration UI, gaze events).
 import * as THREE from '/vendor/three/three.module.js';
-import { WebcamCore, PresenceMonitor, EyeTracker, MouseGazeSource, RemoteGazeSource, runCalibration, LM } from '/dist/webcam.browser.js';
+import { WebcamCore, PresenceMonitor, HeadPoseMonitor, syntheticFace, EyeTracker, MouseGazeSource, RemoteGazeSource, runCalibration, LM } from '/dist/webcam.browser.js';
 
 const $ = (id) => document.getElementById(id);
 const config = await fetch('/config.json').then((r) => r.json()).catch(() => ({}));
@@ -309,13 +309,80 @@ function startModules(core) {
     set('m-identity', s.identity, s.identity === 'drift' ? 'bad' : s.identity === 'match' ? 'ok' : '');
     set('m-setup', s.warnings.length ? s.warnings.join(', ') : 'good', s.warnings.length ? 'warn' : 'ok');
   });
-  const off = presence.connect(core);
+  // Head pose and gaze region: no calibration; the first second and a half is taken as "looking at the screen".
+  const pose = new HeadPoseMonitor();
+  pose.on('event', logEvent);
+  pose.on('begin', logBegin);
+  pose.on('sample', (s) => {
+    const names = { 'on-screen': 'on screen', left: 'off screen, left', right: 'off screen, right', up: 'off screen, up', down: 'off screen, down' };
+    set('m-region', s.ready ? names[s.region] : 'learning baseline...', s.region === 'on-screen' ? 'ok' : 'warn');
+    set('m-dwell', `${(s.dwellMs / 1000).toFixed(1)} s`);
+    set('m-angles', s.ready ? `${s.yawDeg.toFixed(0)} deg yaw, ${s.pitchDeg.toFixed(0)} deg pitch` : '-');
+  });
+  $('m-rebase').onclick = () => pose.recalibrate();
+  const offP = presence.connect(core);
+  const offH = pose.connect(core);
+  const off = () => {
+    offP();
+    offH();
+  };
   offModules = () => {
     off();
     presence.flush();
+    pose.flush();
     $('modules').hidden = true;
   };
 }
+
+// ---------- a scripted synthetic face (no camera), so the modules can be watched without a person ----------
+// Looks at the screen, glances left and up (thinking), leaves, brings a second face, then reads
+// something off to the right: slow sweeps along a line and a quick jump back, again and again.
+function syntheticSource() {
+  const handlers = new Set();
+  const t0 = performance.now();
+  const screen = { screenWidthCm: 34, screenHeightCm: 19, headYCm: 2, noise: 0.012, matrix: true };
+  const face = (t, o) => syntheticFace({ ...screen, gazeX: 0.5, gazeY: 0.5, t, ...o });
+  const scenario = (s) => {
+    if (s < 3) return { label: 'looking at the screen', gaze: {} };
+    if (s < 5) return { label: 'glance left (thinking)', gaze: { gazeX: -0.7 } };
+    if (s < 8) return { label: 'looking at the screen', gaze: {} };
+    if (s < 10) return { label: 'glance up (thinking)', gaze: { gazeY: -1.0 } };
+    if (s < 13) return { label: 'looking at the screen', gaze: {} };
+    if (s < 17) return { label: 'face leaves', gaze: null };
+    if (s < 20) return { label: 'looking at the screen', gaze: {} };
+    if (s < 24) return { label: 'a second face appears', gaze: {}, second: true };
+    if (s < 27) return { label: 'looking at the screen', gaze: {} };
+    if (s < 40) {
+      // Reading off to the right: 2.4 s sweeps with a 0.2 s return.
+      const p = ((s - 27) % 2.6) / 2.6;
+      const x = p < 0.92 ? 1.45 + (p / 0.92) * 0.55 : 2.0 - ((p - 0.92) / 0.08) * 0.55;
+      return { label: 'reading something to the right', gaze: { gazeX: x } };
+    }
+    return { label: 'looking at the screen', gaze: {} };
+  };
+  const timer = setInterval(() => {
+    const t = performance.now();
+    const s = ((t - t0) / 1000) % 50;
+    const sc = scenario(s);
+    const faces = sc.gaze === null ? [] : [face(t, sc.gaze)];
+    if (sc.second) faces.push(face(t, { headXCm: 14 }));
+    $('s-source').textContent = 'synthetic: ' + sc.label;
+    for (const h of [...handlers]) h({ t, faces });
+  }, 33);
+  return { subscribe: (h) => (handlers.add(h), () => handlers.delete(h)), stop: () => clearInterval(timer) };
+}
+
+$('synth').addEventListener('click', () => {
+  offGaze();
+  stopSource();
+  const src = syntheticSource();
+  startModules(src);
+  stopSource = () => {
+    src.stop();
+    offModules();
+  };
+  $('report').textContent = 'A scripted synthetic face is driving the modules: no camera is in use.';
+});
 
 // ---------- camera preview ----------
 const overlay = $('overlay');
