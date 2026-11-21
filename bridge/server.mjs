@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The EyeTracker bridge: one small local server that
+// The Webcam bridge: one small local server that
 //   1. serves the tracker page (the page that owns the camera) and the demo, with MediaPipe's
 //      files and the face model served locally so it works with no internet connection,
 //   2. relays gaze from trackers to displays over WebSocket (docs/PROTOCOL.md).
@@ -250,7 +250,7 @@ async function certificate() {
     // No certificate yet.
   }
   const selfsigned = (await import('selfsigned')).default;
-  const pems = await selfsigned.generate([{ name: 'commonName', value: 'MindAttic EyeTracker bridge' }], {
+  const pems = await selfsigned.generate([{ name: 'commonName', value: 'MindAttic Webcam bridge' }], {
     keySize: 2048,
     days: 825,
     algorithm: 'sha256',
@@ -297,8 +297,8 @@ function listen(server, p, label) {
 }
 
 // ---- start ----
-if (!fs.existsSync(path.join(root, 'dist', 'eyetracker.browser.js'))) {
-  console.error('dist/eyetracker.browser.js is missing. Run "npm run build" first.');
+if (!fs.existsSync(path.join(root, 'dist', 'webcam.browser.js'))) {
+  console.error('dist/webcam.browser.js is missing. Run "npm run build" first.');
   process.exit(1);
 }
 

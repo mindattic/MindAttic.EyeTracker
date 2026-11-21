@@ -12,7 +12,7 @@ mirrors the reference display client, `RemoteGazeSource` in `src/remote.ts`.
 Add the package by path in `Packages/manifest.json`. From a sibling repo in the MindAttic workspace:
 
 ```json
-"com.mindattic.eyetracker": "file:../../MindAttic.EyeTracker/unity/com.mindattic.eyetracker"
+"com.mindattic.eyetracker": "file:../../MindAttic.Webcam/unity/com.mindattic.eyetracker"
 ```
 
 It needs Unity 6000.0 or later and no third-party packages. JSON is parsed with `JsonUtility`.

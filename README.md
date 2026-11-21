@@ -1,6 +1,11 @@
-# MindAttic.EyeTracker
+# MindAttic.Webcam
 
 Webcam eye tracking: where on the screen is this person looking?
+
+> This repo was **MindAttic.EyeTracker** and is now **MindAttic.Webcam** (ET-T12). The npm name is
+> `@mindattic/webcam`; `compat/eyetracker` is the `@mindattic/eyetracker` compatibility package that
+> re-exports it, and `dist/eyetracker.browser.js` still works as an alias of `dist/webcam.browser.js`.
+> The Unity package (`com.mindattic.eyetracker`) and Unreal plugin (`MindAtticEyeTracker`) keep their names.
 
 It needs no special hardware. An ordinary webcam or a phone's front camera watches the eyes. The
 library finds the irises and the eye corners (so, in effect, how much white shows on each side of
@@ -11,7 +16,7 @@ It works in three places:
 
 | Where | How |
 | --- | --- |
-| **Browser** | `@mindattic/eyetracker`, the TypeScript library in `src/`. Camera, tracking and calibration all run in the page. |
+| **Browser** | `@mindattic/webcam`, the TypeScript library in `src/`. Camera, tracking and calibration all run in the page. |
 | **Unity** | The UPM package in `unity/com.mindattic.eyetracker`. The game receives gaze from a tracker page through the bridge. |
 | **Unreal** | The plugin in `unreal/MindAtticEyeTracker`. Same arrangement. |
 
@@ -24,7 +29,7 @@ The first game built on it is [MindPuck](https://github.com/mindattic/MindPuck.W
 PowerShell:
 
 ```powershell
-cd D:\Projects\MindAttic\MindAttic.EyeTracker
+cd D:\Projects\MindAttic\MindAttic.Webcam
 npm install
 npm start
 ```
@@ -55,7 +60,7 @@ The bridge prints its addresses when it starts:
 ## Use it in a web page
 
 ```ts
-import { EyeTracker, runCalibration } from '@mindattic/eyetracker';
+import { EyeTracker, runCalibration } from '@mindattic/webcam';
 
 const tracker = new EyeTracker();
 await tracker.start();               // asks for the camera, loads the face model
@@ -73,7 +78,7 @@ To take gaze from a phone or another window instead, swap the source. Everything
 because both are a `GazeSource`:
 
 ```ts
-import { RemoteGazeSource, runCalibration } from '@mindattic/eyetracker';
+import { RemoteGazeSource, runCalibration } from '@mindattic/webcam';
 
 const tracker = new RemoteGazeSource('ws://localhost:8787/gaze');
 await runCalibration(tracker);       // the dots show here; the phone collects the samples
@@ -83,7 +88,7 @@ tracker.on('gaze', (g) => { /* same as above */ });
 `MouseGazeSource` is a third `GazeSource` driven by the pointer, for when there is no camera.
 
 Without a bundler, import the single-file build the bridge serves:
-`import { EyeTracker } from 'http://localhost:8787/dist/eyetracker.browser.js'`.
+`import { EyeTracker } from 'http://localhost:8787/dist/webcam.browser.js'`.
 
 ## Use it in Unity or Unreal
 
@@ -111,7 +116,7 @@ described in [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 | Command | Does |
 | --- | --- |
-| `npm run build` | Typechecks, emits `dist/`, bundles `dist/eyetracker.browser.js` |
+| `npm run build` | Typechecks, emits `dist/`, bundles `dist/webcam.browser.js` |
 | `npm run bridge` | Starts the bridge on ports 8787 (http, ws) and 8788 (https, wss) |
 | `npm start` | Build, start the bridge, open the gaze lab |
 | `npm test` | Runs the unit tests |

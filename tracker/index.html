@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>EyeTracker: camera</title>
+<title>Webcam: camera</title>
 <style>
   :root { color-scheme: dark; --ink:#e8eefc; --dim:#8b96ad; --line:#1f2836; --bg:#07090f; --ok:#5fe3a1; --warn:#ffc266; --bad:#ff7a7a; --accent:#7fd4ff; }
   * { box-sizing: border-box; }
@@ -44,7 +44,7 @@
   <p class="note">Calibration is started from the game or app that is showing the screen. Keep this page open while you play; if it is on the same computer as the game, leave this window visible beside it.</p>
 </main>
 <script type="module">
-import { EyeTracker, CameraLandmarkSource, publishToBridge, LM } from '/dist/eyetracker.browser.js';
+import { EyeTracker, CameraLandmarkSource, publishToBridge, LM } from '/dist/webcam.browser.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);

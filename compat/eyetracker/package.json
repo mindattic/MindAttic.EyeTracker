@@ -1,0 +1,14 @@
+{
+  "name": "@mindattic/eyetracker",
+  "version": "0.2.0",
+  "description": "Compatibility name for @mindattic/webcam (the repo was MindAttic.EyeTracker). Re-exports everything; new code should import @mindattic/webcam.",
+  "license": "MIT",
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": { "types": "./index.d.ts", "import": "./index.js" },
+    "./core": { "types": "./core.d.ts", "import": "./core.js" }
+  },
+  "dependencies": { "@mindattic/webcam": "file:../.." }
+}

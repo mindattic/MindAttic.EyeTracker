@@ -1,7 +1,7 @@
 {
-  "name": "@mindattic/eyetracker",
-  "version": "0.1.0",
-  "description": "Webcam eye tracking: iris and eye-white landmarks to an on-screen gaze point, for the web, Unity and Unreal",
+  "name": "@mindattic/webcam",
+  "version": "0.2.0",
+  "description": "Webcam core and modules (eye tracking, presence, head pose, integrity events) for the web; eye tracking also for Unity and Unreal",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
@@ -10,8 +10,8 @@
     ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
     "./core": { "types": "./dist/core.d.ts", "import": "./dist/core.js" }
   },
-  "files": ["dist", "bridge", "demo", "tracker", "tools", "docs"],
-  "bin": { "eyetracker-bridge": "bridge/server.mjs" },
+  "files": ["dist", "compat", "bridge", "demo", "tracker", "tools", "docs"],
+  "bin": { "webcam-bridge": "bridge/server.mjs", "eyetracker-bridge": "bridge/server.mjs" },
   "scripts": {
     "build": "tsc -p tsconfig.json && node tools/bundle.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",

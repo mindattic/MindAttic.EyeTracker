@@ -2,7 +2,7 @@
 // It is both the library's demo and its manual test: every public piece is exercised here
 // (local camera, remote tracker through the bridge, mouse stand-in, calibration UI, gaze events).
 import * as THREE from '/vendor/three/three.module.js';
-import { EyeTracker, MouseGazeSource, RemoteGazeSource, runCalibration, LM } from '/dist/eyetracker.browser.js';
+import { EyeTracker, MouseGazeSource, RemoteGazeSource, runCalibration, LM } from '/dist/webcam.browser.js';
 
 const $ = (id) => document.getElementById(id);
 const config = await fetch('/config.json').then((r) => r.json()).catch(() => ({}));
