@@ -84,3 +84,13 @@ export interface GazeSource {
    */
   hint?(x: number, y: number, weight?: number): void;
 }
+
+/** One camera frame as every module sees it: all the faces found, never the pixels. */
+export interface WebcamFrame {
+  /** Capture time in milliseconds on the `performance.now()` clock. */
+  t: number;
+  /** Every face found, largest first as MediaPipe orders them. Empty when nobody is in view. */
+  faces: LandmarkFrame[];
+  /** Mean image brightness 0..255, when `measureLight` is on and a reading is fresh. */
+  luma?: number;
+}

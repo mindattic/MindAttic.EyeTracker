@@ -1,5 +1,6 @@
 import { CalibrationSession } from './calibration.js';
 import { CameraLandmarkSource, type CameraOptions } from './camera.js';
+import type { WebcamCore } from './webcam.js';
 import { Emitter } from './emitter.js';
 import type { FaceFeatures } from './features.js';
 import { addSample, isValidStats, solveStats } from './learning.js';
@@ -20,6 +21,8 @@ export interface TrackerStatus {
 
 export interface EyeTrackerOptions {
   camera?: Partial<CameraOptions>;
+  /** Share this webcam core (camera, permission and face model) with other modules instead of opening a camera of its own. */
+  core?: WebcamCore;
   pipeline?: Partial<PipelineOptions>;
   /**
    * Where the calibration is kept in localStorage, so a returning user is not asked to calibrate
@@ -81,7 +84,7 @@ export class EyeTracker extends Emitter<TrackerEvents> implements GazeSource {
 
   constructor(options: EyeTrackerOptions = {}) {
     super();
-    this.camera = new CameraLandmarkSource(options.camera);
+    this.camera = new CameraLandmarkSource(options.camera, options.core);
     this.pipeline = new GazePipeline({ ...DEFAULT_PIPELINE, ...options.pipeline });
     this.storageKey = options.storageKey === undefined ? 'default' : options.storageKey;
     this.space = options.space ?? 'viewport';
