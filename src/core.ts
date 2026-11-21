@@ -14,3 +14,5 @@ export * from './learning.js';
 export * from './math/ridge.js';
 export * from './remote.js';
 export * from './testing/syntheticFace.js';
+export * from './events.js';
+export * from './presence.js';

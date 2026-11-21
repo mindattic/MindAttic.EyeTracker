@@ -2,7 +2,7 @@
 // It is both the library's demo and its manual test: every public piece is exercised here
 // (local camera, remote tracker through the bridge, mouse stand-in, calibration UI, gaze events).
 import * as THREE from '/vendor/three/three.module.js';
-import { EyeTracker, MouseGazeSource, RemoteGazeSource, runCalibration, LM } from '/dist/webcam.browser.js';
+import { WebcamCore, PresenceMonitor, EyeTracker, MouseGazeSource, RemoteGazeSource, runCalibration, LM } from '/dist/webcam.browser.js';
 
 const $ = (id) => document.getElementById(id);
 const config = await fetch('/config.json').then((r) => r.json()).catch(() => ({}));
@@ -154,10 +154,10 @@ function use(next, label, stop) {
 
 $('camera').addEventListener('click', async () => {
   $('preview').hidden = false;
-  const tracker = new EyeTracker({
-    storageKey: 'demo',
-    camera: { video: $('video'), wasmBaseUrl: config.wasmBaseUrl, modelUrl: config.modelUrl },
-  });
+  // One camera and one face model, shared by the eye tracker and the other modules.
+  const core = new WebcamCore({ video: $('video'), wasmBaseUrl: config.wasmBaseUrl, modelUrl: config.modelUrl, numFaces: 2, measureLight: true });
+  const tracker = new EyeTracker({ storageKey: 'demo', core });
+  startModules(core);
   tracker.on('status', (s) => {
     if (s.state === 'error') $('report').textContent = s.error;
     set('s-fps', s.state === 'running' ? `${s.fps}/s` : s.state, s.fps >= 20 ? 'ok' : 'warn');
@@ -186,6 +186,7 @@ $('camera').addEventListener('click', async () => {
   }
   use(tracker, 'this camera', () => {
     tracker.stop();
+    offModules();
     $('preview').hidden = true;
   });
   $('report').textContent = tracker.calibrated
@@ -272,6 +273,49 @@ $('check').addEventListener('click', async () => {
   const percent = (mean / Math.hypot(innerWidth, innerHeight)) * 100;
   $('report').textContent = `Accuracy over ${errors.length} points: ${Math.round(mean)} px average (${percent.toFixed(1)}% of the screen diagonal), ${Math.round(worst)} px worst.`;
 });
+
+// ---------- modules (presence, ...) ----------
+const eventLog = $('events');
+let offModules = () => {};
+function logEvent(e) {
+  const li = document.createElement('li');
+  const t = new Date(e.end ?? Date.now()).toLocaleTimeString();
+  li.innerHTML = `<b></b> <span></span><br><span></span>`;
+  li.children[0].textContent = e.type;
+  li.children[1].textContent = `${t}, ${(((e.end ?? Date.now()) - e.start) / 1000).toFixed(1)} s, confidence ${e.confidence.toFixed(2)}`;
+  li.children[3].textContent = e.summary;
+  eventLog.prepend(li);
+  while (eventLog.children.length > 30) eventLog.lastChild.remove();
+  console.log('webcam-event', JSON.stringify(e));
+}
+
+function logBegin(b) {
+  const li = document.createElement('li');
+  li.innerHTML = '<b></b> <span></span>';
+  li.children[0].textContent = b.type;
+  li.children[1].textContent = `started ${new Date(b.start).toLocaleTimeString()}`;
+  eventLog.prepend(li);
+}
+
+function startModules(core) {
+  offModules();
+  $('modules').hidden = false;
+  const presence = new PresenceMonitor();
+  presence.on('event', logEvent);
+  presence.on('begin', logBegin);
+  presence.on('status', (s) => {
+    set('m-faces', String(s.faces), s.faces === 1 ? 'ok' : 'warn');
+    set('m-presence', s.absent ? 'absent' : s.multiple ? 'more than one face' : 'present', s.absent || s.multiple ? 'bad' : 'ok');
+    set('m-identity', s.identity, s.identity === 'drift' ? 'bad' : s.identity === 'match' ? 'ok' : '');
+    set('m-setup', s.warnings.length ? s.warnings.join(', ') : 'good', s.warnings.length ? 'warn' : 'ok');
+  });
+  const off = presence.connect(core);
+  offModules = () => {
+    off();
+    presence.flush();
+    $('modules').hidden = true;
+  };
+}
 
 // ---------- camera preview ----------
 const overlay = $('overlay');
