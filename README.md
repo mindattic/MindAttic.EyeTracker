@@ -24,6 +24,37 @@ The first game built on it is [MindPuck](https://github.com/mindattic/MindPuck.W
 [Unity](https://github.com/mindattic/MindPuck.Unity) and
 [Unreal](https://github.com/mindattic/MindPuck.Unreal) versions.
 
+## Modules
+
+One camera, one face model (`WebcamCore`), and modules that share them. Each is a subpath export.
+
+| Import | Does |
+| --- | --- |
+| `@mindattic/webcam` | The core (`WebcamCore`: device choice, permission, frame loop, shared MediaPipe landmarker) plus everything below |
+| `@mindattic/webcam/eyetracking` | Calibrated gaze point on the screen (`EyeTracker`, `runCalibration`) |
+| `@mindattic/webcam/presence` | `PresenceMonitor`: face count, absent, second face, same person throughout (in-memory signature), lighting and framing warnings |
+| `@mindattic/webcam/headpose` | `HeadPoseMonitor`: calibration-free on-screen / left / right / up / down with dwell; short glances annotated as thinking |
+| `@mindattic/webcam/integrity` | `IntegrityMonitor`: one `{type, start, end, confidence, summary}` stream with the reading-pattern detector; `toHubEvent` for Gadfly's `SessionHub.Integrity` |
+| `@mindattic/webcam/core` | The platform-neutral part (no camera, no DOM): types, math, and every monitor's logic |
+
+```ts
+import { WebcamCore } from '@mindattic/webcam';
+import { IntegrityMonitor } from '@mindattic/webcam/integrity';
+
+const core = new WebcamCore({ numFaces: 2, measureLight: true });
+const integrity = new IntegrityMonitor();            // privacy: no frames leave the device
+const sink = integrity.sink((events) => hub.invoke('Integrity', sessionId, events));
+await integrity.start(core);                         // asks for the camera, loads the model
+// ... the exam ...
+integrity.stop();                                    // closes open events and releases the camera
+await sink.close();
+```
+
+The same `core` can feed an `EyeTracker` (`new EyeTracker({ core })`), so eye tracking and the
+monitors cost one camera and one model. The stream reports behaviour for a human to review; it never
+infers emotion or deception. Read [docs/GAZE-AND-DECEPTION.md](docs/GAZE-AND-DECEPTION.md) before
+using it on people. The gaze lab's "Run modules on a synthetic face" button shows every module with no camera.
+
 ## Try it
 
 PowerShell:
@@ -110,7 +141,7 @@ described in [docs/PROTOCOL.md](docs/PROTOCOL.md).
 | `demo/` | The gaze lab: a three.js scene and an accuracy check. |
 | `unity/`, `unreal/` | The engine clients. |
 | `test/` | Unit tests (vitest). They drive the whole pipeline with a synthetic face, so no camera is needed. |
-| `docs/` | [ARCHITECTURE.md](docs/ARCHITECTURE.md), [PROTOCOL.md](docs/PROTOCOL.md), [BEST-PRACTICES.md](docs/BEST-PRACTICES.md). |
+| `docs/` | [ARCHITECTURE.md](docs/ARCHITECTURE.md), [PROTOCOL.md](docs/PROTOCOL.md), [BEST-PRACTICES.md](docs/BEST-PRACTICES.md), [GAZE-AND-DECEPTION.md](docs/GAZE-AND-DECEPTION.md). |
 
 ## Commands
 
